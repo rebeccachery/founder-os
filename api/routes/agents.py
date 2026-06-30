@@ -20,6 +20,7 @@ AGENT_MODULES = {
     "social": "agents.social.agent.SocialAgent",
     "research": "agents.research.agent.ResearchAgent",
     "opportunities": "agents.opportunities.agent.OpportunitiesAgent",
+    "oss_discovery": "agents.oss_discovery.agent.OssDiscoveryAgent",
 }
 
 

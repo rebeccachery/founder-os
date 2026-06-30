@@ -69,6 +69,14 @@ cp .env.example .env
 uvicorn api.main:app --reload
 ```
 
+Or without activating the venv:
+
+```bash
+./workflows/run_api.sh
+```
+
+Use the project `.venv` — system `uvicorn` will fail with `ModuleNotFoundError: No module named 'dotenv'`.
+
 API docs: http://localhost:8000/docs
 
 Demo seed data populates the dashboard on first API start when `SEED_DEMO_DATA=true`.

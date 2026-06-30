@@ -148,12 +148,50 @@ class Contact(BaseModel):
     updated_at: datetime | None = None
 
 
+class OssScores(BaseModel):
+    total: float = 0.0
+    task_fit: float = 0.0
+    language_fit: float = 0.0
+    recency: float = 0.0
+    popularity: float = 0.0
+    license_fit: float = 0.0
+
+
+class OssResource(BaseModel):
+    id: int | None = None
+    name: str
+    resource_type: str
+    url: str
+    description: str | None = None
+    organization: str | None = None
+    license: str | None = None
+    stars: int | None = None
+    task_tags: list[str] = Field(default_factory=list)
+    language_tags: list[str] = Field(default_factory=list)
+    metrics_json: dict[str, Any] | None = None
+    published_at: date | None = None
+    last_updated_at: date | None = None
+    status: ItemStatus = ItemStatus.NEW
+    source: str | None = None
+    score_total: float | None = None
+    score_task_fit: float | None = None
+    score_language_fit: float | None = None
+    score_recency: float | None = None
+    score_popularity: float | None = None
+    rank_reason: str | None = None
+    raw_json: dict[str, Any] | None = None
+    discovered_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class Stats(BaseModel):
     investors: int
     funding: int
     grants: int
     competitions: int
     scout: int
+    oss: int = 0
     deadlines_upcoming: int
     contacts: int
     new_items: int

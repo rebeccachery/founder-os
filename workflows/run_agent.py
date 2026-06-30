@@ -26,10 +26,11 @@ AGENT_MODULES = {
     "social": ("agents.social.agent", "SocialAgent"),
     "research": ("agents.research.agent", "ResearchAgent"),
     "opportunities": ("agents.opportunities.agent", "OpportunitiesAgent"),
+    "oss_discovery": ("agents.oss_discovery.agent", "OssDiscoveryAgent"),
 }
 
 DAILY_AGENTS = ["funding_scout", "grants", "opportunities", "funding"]
-WEEKLY_AGENTS = ["investors", "research"]
+WEEKLY_AGENTS = ["investors", "research", "oss_discovery"]
 
 
 def load_agent(name: str):

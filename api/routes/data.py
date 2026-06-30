@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from api.database import db_session
 from api.deps import verify_api_key
-from lib.db import get_deadlines, get_stats, list_scout_opportunities, list_table, seed_demo_data
+from lib.db import get_deadlines, get_stats, list_oss_resources, list_scout_opportunities, list_table, seed_demo_data
+from lib.discovery.profile import load_oss_profile
 
 router = APIRouter(prefix="/api", tags=["data"])
 
@@ -61,6 +62,30 @@ def get_scout(
             status=status,
             category=category,
             min_score=min_score,
+            limit=limit,
+        )
+
+
+@router.get("/oss")
+def get_oss(
+    status: str | None = None,
+    resource_type: str | None = None,
+    min_score: float | None = Query(default=None, ge=0, le=100),
+    view: str = Query(default="recent", pattern="^(recent|reference|all)$"),
+    recent_days: int | None = Query(default=None, ge=1, le=365),
+    limit: int = Query(default=100, le=500),
+    _: None = Depends(verify_api_key),
+):
+    profile = load_oss_profile()
+    days = recent_days if recent_days is not None else profile.recency.digest_recent_days
+    with db_session() as conn:
+        return list_oss_resources(
+            conn,
+            status=status,
+            resource_type=resource_type,
+            min_score=min_score,
+            view=view,
+            recent_days=days,
             limit=limit,
         )
 

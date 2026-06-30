@@ -18,6 +18,7 @@ export interface Stats {
   grants: number;
   competitions: number;
   scout: number;
+  oss: number;
   deadlines_upcoming: number;
   contacts: number;
   new_items: number;
@@ -89,6 +90,24 @@ export interface ScoutOpportunity {
   rank_reason: string | null;
 }
 
+export interface OssResource {
+  id: number;
+  name: string;
+  resource_type: string;
+  organization: string | null;
+  description: string | null;
+  url: string | null;
+  license: string | null;
+  stars: number | null;
+  last_updated_at: string | null;
+  status: string;
+  source: string | null;
+  score_total: number | null;
+  rank_reason: string | null;
+}
+
+export type OssView = "recent" | "reference" | "all";
+
 export const api = {
   stats: () => fetchApi<Stats>("/api/stats"),
   investors: () => fetchApi<Investor[]>("/api/investors"),
@@ -99,5 +118,17 @@ export const api = {
     fetchApi<ScoutOpportunity[]>(
       minScore != null ? `/api/scout?min_score=${minScore}` : "/api/scout"
     ),
+  oss: (opts?: {
+    view?: OssView;
+    resourceType?: string;
+    minScore?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.view) params.set("view", opts.view);
+    if (opts?.resourceType) params.set("resource_type", opts.resourceType);
+    if (opts?.minScore != null) params.set("min_score", String(opts.minScore));
+    const qs = params.toString();
+    return fetchApi<OssResource[]>(`/api/oss${qs ? `?${qs}` : ""}`);
+  },
   deadlines: (days = 30) => fetchApi<Deadline[]>(`/api/deadlines?days=${days}`),
 };

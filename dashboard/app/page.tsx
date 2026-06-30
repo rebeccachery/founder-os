@@ -10,6 +10,7 @@ export default async function HomePage() {
     grants: 0,
     competitions: 0,
     scout: 0,
+    oss: 0,
     deadlines_upcoming: 0,
     contacts: 0,
     new_items: 0,
@@ -37,14 +38,18 @@ export default async function HomePage() {
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Scout picks" value={stats.scout} href="/scout" />
+        <StatCard label="OSS resources" value={stats.oss} href="/oss" />
         <StatCard label="Investors" value={stats.investors} href="/investors" />
         <StatCard label="Funding" value={stats.funding} href="/funding" />
-        <StatCard label="Grants" value={stats.grants} href="/grants" />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Grants" value={stats.grants} href="/grants" />
         <StatCard label="Competitions" value={stats.competitions} href="/competitions" />
         <StatCard label="Upcoming deadlines (30d)" value={stats.deadlines_upcoming} href="/deadlines" />
+      </div>
+
+      <div className="mt-4">
         <StatCard label="New items to review" value={stats.new_items} />
       </div>
 

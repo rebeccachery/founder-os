@@ -1,0 +1,28 @@
+categories:
+  datasets:
+    - "haitian creole speech"
+    - "haitian creole translation corpus"
+    - "haitian creole text dataset"
+    - "ht language speech dataset"
+    - "low-resource creole speech"
+  models:
+    - "haitian creole whisper"
+    - "haitian creole speech recognition"
+    - "haitian creole translation"
+    - "ht wav2vec2 speech"
+    - "creole language model"
+  repos:
+    - "haitian creole speech recognition github"
+    - "haitian creole NLP github stars:>10"
+    - "kreyol speech dataset github"
+    - "creole language processing open source"
+  benchmarks:
+    - "haitian creole speech benchmark"
+    - "creole language evaluation benchmark site:paperswithcode.com"
+    - "low-resource creole ASR benchmark"
+    - "FLEURS haitian creole"
+  eval_tools:
+    - "WER CER evaluation speech recognition stars:>20"
+    - "sacrebleu evaluation github"
+    - "jiwer speech evaluation toolkit"
+    - "speechmetrics evaluation github"

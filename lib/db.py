@@ -118,6 +118,34 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     message TEXT
 );
 
+CREATE TABLE IF NOT EXISTS oss_resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    url TEXT UNIQUE NOT NULL,
+    description TEXT,
+    organization TEXT,
+    license TEXT,
+    stars INTEGER,
+    task_tags TEXT,
+    language_tags TEXT,
+    metrics_json TEXT,
+    published_at TEXT,
+    last_updated_at TEXT,
+    status TEXT NOT NULL DEFAULT 'new',
+    source TEXT,
+    score_total REAL,
+    score_task_fit REAL,
+    score_language_fit REAL,
+    score_recency REAL,
+    score_popularity REAL,
+    rank_reason TEXT,
+    raw_json TEXT,
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_scout_score ON scout_opportunities(score_total DESC);
 CREATE INDEX IF NOT EXISTS idx_scout_deadline ON scout_opportunities(deadline_at);
 CREATE INDEX IF NOT EXISTS idx_scout_category ON scout_opportunities(category);
@@ -125,6 +153,9 @@ CREATE INDEX IF NOT EXISTS idx_grants_deadline ON grants(deadline_at);
 CREATE INDEX IF NOT EXISTS idx_competitions_deadline ON competitions(deadline_at);
 CREATE INDEX IF NOT EXISTS idx_investors_status ON investors(status);
 CREATE INDEX IF NOT EXISTS idx_contacts_follow_up ON contacts(next_follow_up_at);
+CREATE INDEX IF NOT EXISTS idx_oss_score ON oss_resources(score_total DESC);
+CREATE INDEX IF NOT EXISTS idx_oss_type ON oss_resources(resource_type);
+CREATE INDEX IF NOT EXISTS idx_oss_status ON oss_resources(status);
 """
 
 
@@ -335,7 +366,14 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
     upcoming = len(get_deadlines(conn, days=30))
 
     new_items = 0
-    for table in ("investors", "funding_opportunities", "grants", "competitions", "scout_opportunities"):
+    for table in (
+        "investors",
+        "funding_opportunities",
+        "grants",
+        "competitions",
+        "scout_opportunities",
+        "oss_resources",
+    ):
         row = conn.execute(
             f"SELECT COUNT(*) AS c FROM {table} WHERE status = 'new'"
         ).fetchone()
@@ -347,6 +385,7 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
         "grants": count("grants"),
         "competitions": count("competitions"),
         "scout": count("scout_opportunities"),
+        "oss": count("oss_resources"),
         "deadlines_upcoming": upcoming,
         "contacts": count("contacts"),
         "new_items": new_items,
@@ -379,6 +418,64 @@ def list_scout_opportunities(
     rows = conn.execute(
         f"""
         SELECT * FROM scout_opportunities
+        {where}
+        ORDER BY COALESCE(score_total, -1) DESC, updated_at DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def _oss_recent_clause(recent_days: int) -> tuple[str, str]:
+    """Match items updated or first discovered within the recent window."""
+    clause = (
+        "COALESCE(last_updated_at, discovered_at) IS NOT NULL AND "
+        "datetime(COALESCE(last_updated_at, discovered_at)) >= datetime('now', ?)"
+    )
+    return clause, f"-{recent_days} days"
+
+
+def list_oss_resources(
+    conn: sqlite3.Connection,
+    *,
+    status: str | None = None,
+    resource_type: str | None = None,
+    min_score: float | None = None,
+    view: str = "all",
+    recent_days: int = 90,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if resource_type:
+        clauses.append("resource_type = ?")
+        params.append(resource_type)
+    if min_score is not None:
+        clauses.append("score_total >= ?")
+        params.append(min_score)
+
+    if view == "recent":
+        recent_clause, recent_param = _oss_recent_clause(recent_days)
+        clauses.append(recent_clause)
+        params.append(recent_param)
+    elif view == "reference":
+        recent_clause, recent_param = _oss_recent_clause(recent_days)
+        clauses.append("resource_type IN ('benchmark', 'eval_tool')")
+        clauses.append(
+            f"(COALESCE(last_updated_at, discovered_at) IS NULL OR NOT ({recent_clause}))"
+        )
+        params.append(recent_param)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+    rows = conn.execute(
+        f"""
+        SELECT * FROM oss_resources
         {where}
         ORDER BY COALESCE(score_total, -1) DESC, updated_at DESC
         LIMIT ?

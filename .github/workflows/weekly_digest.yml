@@ -24,6 +24,8 @@ jobs:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
           GOOGLE_CSE_KEY: ${{ secrets.GOOGLE_CSE_KEY }}
           GOOGLE_CSE_CX: ${{ secrets.GOOGLE_CSE_CX }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SEED_DEMO_DATA: "false"
         run: python workflows/run_agent.py --weekly
 
