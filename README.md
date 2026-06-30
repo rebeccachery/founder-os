@@ -1,6 +1,6 @@
 # Founder OS
 
-Internal operating system for solo founders — agents discover funding, investors, grants, and competitions; **Funding Scout** ranks opportunities against your founder profile; a Next.js dashboard surfaces what matters.
+An internal operating system for solo founders. AI agents continuously discover funding opportunities, investors, grants, and startup competitions, while **Funding Scout** ranks them against your founder profile. **OSS Discovery** finds open-source datasets, models, and repos ranked against your language profile. A Next.js dashboard surfaces the highest-impact opportunities in one place.
 
 ## Architecture
 
@@ -8,8 +8,9 @@ Internal operating system for solo founders — agents discover funding, investo
 flowchart LR
   subgraph config [Config]
     Profile[founder_profile.yaml]
+    OssProfile[oss_profile.yaml]
     Queries[agents/*/queries.yaml]
-    Env[.env search keys]
+    Env[.env API keys]
   end
 
   subgraph agents [Agents CLI]
@@ -27,6 +28,7 @@ flowchart LR
   end
 
   Profile --> RunAgent
+  OssProfile --> RunAgent
   Queries --> RunAgent
   Env --> RunAgent
   RunAgent --> SQLite
@@ -45,7 +47,7 @@ flowchart LR
 
 ```
 founder-os/
-├── config/          # founder_profile.yaml
+├── config/          # founder_profile.yaml, oss_profile.yaml
 ├── agents/          # Domain agents (funding, investors, grants, …)
 ├── workflows/       # CLI runner + GitHub Actions
 ├── storage/         # SQLite database + raw exports
@@ -101,18 +103,23 @@ python workflows/run_agent.py --agent funding_scout
 # Daily scan: funding_scout, grants, opportunities, funding
 python workflows/run_agent.py --daily
 
-# Weekly scan: investors, research
+# Weekly scan: investors, research, oss_discovery
 python workflows/run_agent.py --weekly
+
+# OSS datasets, models, and repos (Hugging Face + GitHub + web search)
+python workflows/run_agent.py --agent oss_discovery
 
 # All agents
 python workflows/run_agent.py --all
 ```
 
-Add search API keys to `.env` before running agents against live search:
+Add search API keys to `.env` before running funding agents against live search:
 
 - `TAVILY_API_KEY`
 - `SERPAPI_KEY`
 - `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX`
+
+For OSS Discovery, optional tokens improve rate limits: `GITHUB_TOKEN`, `HF_TOKEN`.
 
 Without keys, agents run but return no search results. The dashboard still works via demo seed data.
 
@@ -130,6 +137,8 @@ Copy [.env.example](.env.example) to `.env`:
 | `TAVILY_API_KEY` / `SERPAPI_KEY` / `GOOGLE_CSE_*` | Search providers |
 | `SEARCH_FALLBACK_ORDER` | Provider fallback chain ([lib/search/client.py](lib/search/client.py)) |
 | `SEED_DEMO_DATA` | Populate demo rows on API startup |
+| `GITHUB_TOKEN` / `HF_TOKEN` | Optional — OSS Discovery rate limits (GitHub + Hugging Face) |
+| `OSS_DISCOVERY_MAX_PER_QUERY` | Max results per OSS query (default `10`) |
 
 ### Founder profile
 
@@ -138,6 +147,14 @@ Edit [config/founder_profile.yaml](config/founder_profile.yaml) to personalize F
 - Company stage, geography, and description
 - Ranking weights under `priorities` (stage fit, AI focus, education, etc.)
 - Keyword signals used by [lib/scout/ranker.py](lib/scout/ranker.py)
+
+### OSS profile
+
+Edit [config/oss_profile.yaml](config/oss_profile.yaml) to personalize OSS Discovery scores:
+
+- Target languages and keywords (e.g. Haitian Creole: `ht`, `hat`)
+- Ranking weights and recency rules
+- Used by [lib/discovery/ranker.py](lib/discovery/ranker.py)
 
 ## Agents
 
@@ -149,6 +166,7 @@ Edit [config/founder_profile.yaml](config/founder_profile.yaml) to personalize F
 | `funding` | Daily | `funding_opportunities` | [agents/funding/README.md](agents/funding/README.md) |
 | `investors` | Weekly | `investors` | [agents/investors/README.md](agents/investors/README.md) |
 | `research` | Weekly | `reports/research_*.md` | [agents/research/README.md](agents/research/README.md) |
+| `oss_discovery` | Weekly | `oss_resources`, `reports/oss_*.md` | [agents/oss_discovery/README.md](agents/oss_discovery/README.md) |
 | `crm` | Manual | `contacts` (stub) | [agents/crm/README.md](agents/crm/README.md) |
 | `social` | Manual | stub | [agents/social/README.md](agents/social/README.md) |
 
@@ -160,6 +178,7 @@ Edit [config/founder_profile.yaml](config/founder_profile.yaml) to personalize F
 |-------|-------------|
 | `/` | Overview stats and upcoming deadlines |
 | `/scout` | Ranked scout picks (scores, categories) |
+| `/oss` | OSS datasets, models, repos (Recent · Reference · All) |
 | `/funding` | Funding opportunities |
 | `/investors` | Investors |
 | `/grants` | Grants |
@@ -175,6 +194,7 @@ Interactive docs: http://localhost:8000/docs
 | GET | `/health` | Health check |
 | GET | `/api/stats` | Dashboard counts |
 | GET | `/api/scout` | Ranked scout opportunities (`category`, `min_score` filters) |
+| GET | `/api/oss` | Ranked OSS resources (`view`, `resource_type`, `min_score` filters) |
 | GET | `/api/investors` | List investors |
 | GET | `/api/funding` | List funding opportunities |
 | GET | `/api/grants` | List grants |
@@ -197,19 +217,23 @@ Configure secrets in your repo:
 | `SERPAPI_KEY` | SerpAPI search |
 | `GOOGLE_CSE_KEY` | Google Custom Search |
 | `GOOGLE_CSE_CX` | Google CSE engine ID |
+| `GITHUB_TOKEN` | GitHub Search API (OSS Discovery) |
+| `HF_TOKEN` | Hugging Face Hub API (OSS Discovery) |
 
 Workflows:
 
 - **Daily Scan** — `funding_scout`, grants, opportunities, funding (6am UTC)
-- **Weekly Digest** — investors, research (Mon 8am UTC)
+- **Weekly Digest** — investors, research, `oss_discovery` (Mon 8am UTC)
 - **Manual Agent Run** — pick an agent from the Actions tab
 
-Note: the Manual Agent Run workflow does not yet list `funding_scout` as a choice — use the CLI or extend [.github/workflows/manual_run.yml](.github/workflows/manual_run.yml) if needed.
+Note: the Manual Agent Run workflow does not yet list `funding_scout` or `oss_discovery` as choices — use the CLI or extend [.github/workflows/manual_run.yml](.github/workflows/manual_run.yml) if needed.
 
 ## Customization
 
 1. Edit [config/founder_profile.yaml](config/founder_profile.yaml) for your stage and thesis
-2. Tune search queries in `agents/*/queries.yaml`
-3. Run `python workflows/run_agent.py --agent funding_scout` and review `/scout`
-4. Set `SEED_DEMO_DATA=false` once live data is flowing
-5. Push to a private repo and configure Actions secrets for scheduled scans
+2. Edit [config/oss_profile.yaml](config/oss_profile.yaml) for target languages and OSS keywords
+3. Tune search queries in `agents/*/queries.yaml`
+4. Run `python workflows/run_agent.py --agent funding_scout` and review `/scout`
+5. Run `python workflows/run_agent.py --agent oss_discovery` and review `/oss`
+6. Set `SEED_DEMO_DATA=false` once live data is flowing
+7. Push to a private repo and configure Actions secrets for scheduled scans
