@@ -4,12 +4,6 @@ from datetime import date, datetime, timedelta
 import sqlite3
 
 from lib.db import get_last_agent_run, list_oss_resources
-from lib.git.collector import (
-    collect_commits,
-    fetch_github_milestones,
-    fetch_github_releases,
-    resolve_repo,
-)
 from lib.schemas import (
     DatasetSignal,
     FeatureSignal,
@@ -17,7 +11,8 @@ from lib.schemas import (
     SocialContext,
 )
 from lib.scout.profile import load_founder_profile
-from lib.social.profile import load_features_config, load_social_profile
+from lib.social.profile import load_features_config, load_social_profile, primary_repo
+from lib.social.repos import collect_all_repos
 
 
 def _period_start(conn: sqlite3.Connection, since_days: int) -> datetime:
@@ -45,6 +40,7 @@ def _load_features() -> list[FeatureSignal]:
                 hook=item.hook,
                 shipped_at=shipped_at,
                 url=item.url,
+                repo=item.repo,
             )
         )
     return features
@@ -68,6 +64,7 @@ def _load_manual_milestones() -> list[MilestoneSignal]:
                 state=item.status,
                 due_on=due_on,
                 source="manual",
+                repo_name=item.repo or "",
             )
         )
     return milestones
@@ -112,33 +109,16 @@ def collect_social_context(conn: sqlite3.Connection) -> SocialContext:
     social_profile = load_social_profile()
     founder_profile = load_founder_profile()
     period_end = datetime.utcnow()
-    period_start = _period_start(conn, social_profile.repo.since_days)
+    period_start = _period_start(conn, social_profile.since_days)
 
-    owner, repo_name, repo_path = resolve_repo(
-        social_profile.repo.owner,
-        social_profile.repo.name,
-        social_profile.repo.local_path,
+    commits, releases, github_milestones, repo_summaries = collect_all_repos(
+        social_profile,
+        period_start,
     )
-
-    commits: list = []
-    releases: list = []
-    github_milestones: list = []
-
-    if social_profile.github.fetch_commits:
-        commits = collect_commits(
-            owner,
-            repo_name,
-            repo_path,
-            period_start,
-            prefer_local_git=social_profile.github.prefer_local_git,
-            use_github_api=bool(owner and repo_name),
-        )
-    if social_profile.github.fetch_releases:
-        releases = fetch_github_releases(owner, repo_name, period_start)
-    if social_profile.github.fetch_milestones:
-        github_milestones = fetch_github_milestones(owner, repo_name)
-
     milestones = _load_manual_milestones() + github_milestones
+
+    main = primary_repo(social_profile)
+    company_name = social_profile.voice.company_name or founder_profile.company.name
 
     return SocialContext(
         period_start=period_start,
@@ -148,10 +128,12 @@ def collect_social_context(conn: sqlite3.Connection) -> SocialContext:
         milestones=milestones,
         features=_load_features(),
         datasets=_load_datasets(conn),
-        company_name=founder_profile.company.name,
+        repos=repo_summaries,
+        company_name=company_name,
         company_stage=founder_profile.company.stage,
-        repo_owner=owner,
-        repo_name=repo_name,
+        primary_repo=main.name if main else "",
+        repo_owner=main.owner if main else "",
+        repo_name=main.name if main else "",
     )
 
 

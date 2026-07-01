@@ -219,6 +219,10 @@ class CommitSignal(BaseModel):
     insertions: int = 0
     deletions: int = 0
     url: str | None = None
+    repo_owner: str = ""
+    repo_name: str = ""
+    repo_role: str = ""
+    repo_url: str | None = None
 
 
 class ReleaseSignal(BaseModel):
@@ -228,6 +232,9 @@ class ReleaseSignal(BaseModel):
     published_at: datetime
     url: str | None = None
     prerelease: bool = False
+    repo_owner: str = ""
+    repo_name: str = ""
+    repo_role: str = ""
 
 
 class MilestoneSignal(BaseModel):
@@ -240,6 +247,7 @@ class MilestoneSignal(BaseModel):
     closed_at: datetime | None = None
     url: str | None = None
     source: str = "github"
+    repo_name: str = ""
 
 
 class FeatureSignal(BaseModel):
@@ -248,6 +256,7 @@ class FeatureSignal(BaseModel):
     hook: str | None = None
     shipped_at: date | None = None
     url: str | None = None
+    repo: str | None = None
 
 
 class DatasetSignal(BaseModel):
@@ -261,6 +270,17 @@ class DatasetSignal(BaseModel):
     discovered_at: datetime | None = None
 
 
+class RepoActivitySummary(BaseModel):
+    repo_owner: str
+    repo_name: str
+    repo_role: str
+    commit_count: int = 0
+    top_commit: str | None = None
+    source: str = "skipped"
+    content_angle: str = ""
+    repo_url: str | None = None
+
+
 class SocialContext(BaseModel):
     period_start: datetime
     period_end: datetime
@@ -269,8 +289,10 @@ class SocialContext(BaseModel):
     milestones: list[MilestoneSignal] = Field(default_factory=list)
     features: list[FeatureSignal] = Field(default_factory=list)
     datasets: list[DatasetSignal] = Field(default_factory=list)
+    repos: list[RepoActivitySummary] = Field(default_factory=list)
     company_name: str = ""
     company_stage: str = ""
+    primary_repo: str = ""
     repo_owner: str = ""
     repo_name: str = ""
 

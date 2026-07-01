@@ -8,18 +8,28 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SOCIAL_PROFILE_PATH = ROOT / "config" / "social_profile.yaml"
 DEFAULT_FEATURES_PATH = ROOT / "config" / "features.yaml"
 
+REPO_PATH_ENV_VARS = {
+    "your-product-repo": "PRODUCT_REPO_PATH",
+    "nyc_map": "NYC_MAP_PATH",
+    "your-product-demo": "DEMO_REPO_PATH",
+}
 
-class RepoConfig(BaseModel):
-    owner: str = ""
-    name: str = ""
-    local_path: str = "."
-    since_days: int = 7
+
+class ProductRepoConfig(BaseModel):
+    owner: str = "your-github-username"
+    name: str
+    role: str = "showcase"
+    weight: float = 1.0
+    local_path: str = ""
+    private: bool = False
+    commit_detail: str = "subject_and_body"
+    content_angle: str = ""
+    fetch_commits: bool = True
+    fetch_releases: bool = True
+    fetch_milestones: bool = False
 
 
 class GitHubConfig(BaseModel):
-    fetch_commits: bool = True
-    fetch_releases: bool = True
-    fetch_milestones: bool = True
     prefer_local_git: bool = True
 
 
@@ -44,6 +54,7 @@ class GenerationConfig(BaseModel):
 
 
 class VoiceConfig(BaseModel):
+    company_name: str = "Your Company"
     tone: str = "founder-led, technical but accessible"
     hashtags: list[str] = Field(default_factory=list)
     avoid: list[str] = Field(default_factory=list)
@@ -58,7 +69,9 @@ class LlmConfig(BaseModel):
 
 
 class SocialProfile(BaseModel):
-    repo: RepoConfig = Field(default_factory=RepoConfig)
+    repos: list[ProductRepoConfig] = Field(default_factory=list)
+    exclude_repos: list[str] = Field(default_factory=list)
+    since_days: int = 7
     github: GitHubConfig = Field(default_factory=GitHubConfig)
     datasets: DatasetConfig = Field(default_factory=DatasetConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
@@ -72,6 +85,7 @@ class FeatureSignalConfig(BaseModel):
     hook: str | None = None
     shipped_at: date | str | None = None
     url: str | None = None
+    repo: str | None = None
 
 
 class ManualMilestone(BaseModel):
@@ -79,11 +93,51 @@ class ManualMilestone(BaseModel):
     status: str
     target_date: date | str | None = None
     description: str | None = None
+    repo: str | None = None
 
 
 class FeaturesConfig(BaseModel):
     features: list[FeatureSignalConfig] = Field(default_factory=list)
     milestones: list[ManualMilestone] = Field(default_factory=list)
+
+
+def resolve_repo_local_path(repo: ProductRepoConfig) -> Path:
+    env_var = REPO_PATH_ENV_VARS.get(repo.name)
+    if env_var:
+        import os
+
+        override = os.getenv(env_var)
+        if override:
+            return Path(override).expanduser()
+
+    if repo.local_path:
+        path = Path(repo.local_path)
+        if not path.is_absolute():
+            path = ROOT / path
+        return path
+
+    return ROOT.parent / repo.name
+
+
+def primary_repo(profile: SocialProfile) -> ProductRepoConfig | None:
+    for repo in profile.repos:
+        if repo.role == "primary":
+            return repo
+    return profile.repos[0] if profile.repos else None
+
+
+def _normalize_profile_data(data: dict) -> dict:
+    if data.get("repo") and not data.get("repos"):
+        legacy = data.pop("repo")
+        data["repos"] = [
+            {
+                "owner": legacy.get("owner", ""),
+                "name": legacy.get("name", ""),
+                "local_path": legacy.get("local_path", "."),
+                "role": "primary",
+            }
+        ]
+    return data
 
 
 def load_social_profile(path: Path | None = None) -> SocialProfile:
@@ -92,6 +146,7 @@ def load_social_profile(path: Path | None = None) -> SocialProfile:
         return SocialProfile()
     with profile_path.open() as f:
         data = yaml.safe_load(f) or {}
+    data = _normalize_profile_data(data)
     return SocialProfile.model_validate(data)
 
 

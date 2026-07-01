@@ -27,6 +27,16 @@ export function SocialDraftCard({ post }: { post: SocialPost }) {
   const label = CONTENT_TYPE_LABELS[post.content_type] || post.content_type;
   const copyPayload = post.hook ? `${post.hook}\n\n${post.body}` : post.body;
 
+  let repoLabel: string | null = null;
+  if (post.source_refs) {
+    try {
+      const refs = JSON.parse(post.source_refs) as Array<{ repo?: string }>;
+      repoLabel = refs.find((ref) => ref.repo)?.repo ?? null;
+    } catch {
+      repoLabel = null;
+    }
+  }
+
   async function setStatus(status: SocialPostStatus) {
     setBusy(status);
     setError(null);
@@ -57,6 +67,9 @@ export function SocialDraftCard({ post }: { post: SocialPost }) {
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-violet-400">{label}</p>
           <h3 className="mt-1 text-lg font-medium text-white">{post.title || label}</h3>
+          {repoLabel && (
+            <p className="mt-1 text-xs text-zinc-500">Source: {repoLabel}</p>
+          )}
         </div>
         <StatusBadge status={post.status} />
       </div>

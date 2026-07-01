@@ -5,7 +5,7 @@ from lib.llm.client import LlmError, chat_json, is_llm_available
 from lib.schemas import RankedSignal, SocialContext, SocialDraft, SocialGenerationResult
 from lib.scout.profile import load_founder_profile
 from lib.social.profile import load_social_profile
-from lib.social.ranker import rank_signals
+from lib.social.ranker import rank_signals, signal_for_repo
 from lib.social.summary import format_ranked_signals, summarize_context
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "agents" / "social" / "prompts"
@@ -32,95 +32,98 @@ def _source_refs(signal: RankedSignal | None) -> list[dict]:
     return [signal.source_ref]
 
 
+def _weekly_summary(context: SocialContext) -> str:
+    lines: list[str] = []
+    for repo in context.repos:
+        if repo.commit_count:
+            lines.append(f"{repo.repo_name}: {repo.commit_count} commit(s)")
+    if context.features:
+        shipped = [f.name for f in context.features if f.status == "shipped"]
+        if shipped:
+            lines.append(f"shipped: {', '.join(shipped[:2])}")
+    return ", ".join(lines) if lines else "steady progress on Your Company"
+
+
 def _template_drafts(
     context: SocialContext,
     signals: list[RankedSignal],
     profile,
 ) -> list[SocialDraft]:
-    top = _top_signal(signals)
-    company = context.company_name or "Our startup"
-    cta = profile.voice.cta_url or f"https://github.com/{context.repo_owner}/{context.repo_name}"
+    primary = signal_for_repo(signals, "your-product-repo") or _top_signal(signals)
+    map_signal = signal_for_repo(signals, "nyc_map") or primary
+    demo_signal = signal_for_repo(signals, "your-product-demo") or primary
+
+    company = profile.voice.company_name or context.company_name or "Your Company"
+    cta = profile.voice.cta_url or "https://example.com/"
     hashtags = " ".join(f"#{tag}" for tag in profile.voice.hashtags[:3])
-    topic = top.title if top else company
-    hook_text = top.summary if top else context.features[0].hook if context.features else company
-
-    weekly_lines: list[str] = []
-    if context.commits:
-        weekly_lines.append(f"{len(context.commits)} commit(s)")
-    if context.features:
-        shipped = [f.name for f in context.features if f.status == "shipped"]
-        if shipped:
-            weekly_lines.append(f"shipped: {', '.join(shipped[:2])}")
-    if context.datasets:
-        weekly_lines.append(f"indexed {len(context.datasets)} OSS resource(s)")
-
-    weekly_summary = ", ".join(weekly_lines) if weekly_lines else "steady progress on the product"
+    weekly_summary = _weekly_summary(context)
 
     drafts = [
         SocialDraft(
             content_type="twitter_thread",
             platform="twitter",
-            title=f"Build update: {topic[:50]}",
-            hook=f"This week at {company}: {weekly_summary}.",
+            title=f"NYC map update: {(map_signal.title if map_signal else company)[:40]}",
+            hook=f"Mapping Haitian community strength and education gaps in NYC.",
             body="\n".join(
                 [
-                    f"1/ This week at {company}: {weekly_summary}.",
-                    f"2/ Highlight: {topic} — {hook_text[:200]}",
-                    f"3/ Why it matters: we're building for underresourced languages in EdTech.",
-                    f"4/ Follow along: {cta}",
+                    f"1/ We're building {company} for underresourced languages — and mapping where support is needed most.",
+                    f"2/ This week on nyc_map: {(map_signal.title if map_signal else 'map improvements')}. {map_signal.summary[:180] if map_signal else ''}",
+                    f"3/ Why it matters: language learning tools should meet communities where they are.",
+                    f"4/ Explore Your Company: {cta}",
                 ]
             ),
-            source_refs=_source_refs(top),
-            signal_score=top.score if top else None,
+            source_refs=_source_refs(map_signal),
+            signal_score=map_signal.score if map_signal else None,
         ),
         SocialDraft(
             content_type="linkedin_post",
             platform="linkedin",
-            title=f"Weekly update — {topic[:40]}",
+            title=f"Your Company weekly — {(primary.title if primary else company)[:40]}",
             hook=f"A quick update from {company}.",
             body=(
                 f"A quick update from {company}.\n\n"
                 f"This period: {weekly_summary}.\n\n"
-                f"The thread I'm most excited about: {topic}. {hook_text}\n\n"
-                f"We're pre-seed, NYC-based, focused on translation and pronunciation "
-                f"for underresourced languages.\n\n"
-                f"More: {cta}\n\n{hashtags}"
+                f"Product focus: {(primary.title if primary else 'platform work')}. "
+                f"{primary.summary[:240] if primary else ''}\n\n"
+                f"We're building pronunciation and translation feedback for underresourced languages — "
+                f"starting with Haitian Creole.\n\n"
+                f"Learn more: {cta}\n\n{hashtags}"
             ),
-            source_refs=_source_refs(top),
-            signal_score=top.score if top else None,
+            source_refs=_source_refs(primary),
+            signal_score=primary.score if primary else None,
         ),
         SocialDraft(
             content_type="demo_idea",
             platform="internal",
-            title=f"60s demo: {topic[:40]}",
-            hook=f"Show how {topic} works in under 60 seconds.",
+            title=f"60s demo: {(demo_signal.title if demo_signal else 'Your Company prototype')[:40]}",
+            hook="Record a short walkthrough for the landing page demo slot.",
             body=(
-                f"**Problem:** Founders struggle to explain {topic} quickly.\n\n"
-                f"**Demo script:**\n"
-                f"1. Open the dashboard (5s)\n"
-                f"2. Show the signal that triggered this week: {topic} (20s)\n"
-                f"3. Walk through one concrete output (25s)\n"
-                f"4. Close with CTA: {cta} (10s)\n\n"
-                f"**Recording tip:** Screen record with your face cam in the corner; "
-                f"keep narration conversational, not scripted."
+                f"**Problem:** Prospects need to see Your Company, not read about it.\n\n"
+                f"**Demo script (60s):**\n"
+                f"1. Open your-product-demo or landing page ({cta}) (5s)\n"
+                f"2. Show: {(demo_signal.title if demo_signal else 'speaking feedback prototype')} (25s)\n"
+                f"3. One sentence on Haitian Creole / underresourced languages (15s)\n"
+                f"4. CTA: demo video coming soon — join the waitlist at {cta} (15s)\n\n"
+                f"**Tip:** Face cam + screen; conversational, not scripted."
             ),
-            source_refs=_source_refs(top),
-            signal_score=top.score if top else None,
+            source_refs=_source_refs(demo_signal),
+            signal_score=demo_signal.score if demo_signal else None,
         ),
         SocialDraft(
             content_type="launch_announcement",
             platform="both",
-            title=f"Progress update: {topic[:40]}",
+            title=f"Your Company progress — {(primary.title if primary else company)[:40]}",
             hook=f"{company} — progress update",
             body=(
                 f"**{company} — progress update**\n\n"
                 f"What we worked on: {weekly_summary}.\n\n"
-                f"Spotlight: {topic}. {hook_text}\n\n"
-                f"Why it matters: building tools for language learning and preservation.\n\n"
-                f"Follow the build: {cta}"
+                f"Spotlight: {(primary.title if primary else 'platform improvements')}. "
+                f"{primary.summary[:200] if primary else ''}\n\n"
+                f"Building for language learning and preservation. Demo video coming soon.\n\n"
+                f"{cta}"
             ),
-            source_refs=_source_refs(top),
-            signal_score=top.score if top else None,
+            source_refs=_source_refs(primary),
+            signal_score=primary.score if primary else None,
         ),
     ]
 
@@ -138,14 +141,13 @@ def _llm_drafts(
     template = _load_prompt("generate.txt")
 
     user = template.format(
-        company_name=context.company_name or founder.company.name,
+        company_name=profile.voice.company_name or context.company_name or founder.company.name,
         company_stage=context.company_stage or founder.company.stage,
         company_description=founder.company.description.strip(),
         tone=profile.voice.tone,
         hashtags=", ".join(profile.voice.hashtags),
         avoid=", ".join(profile.voice.avoid),
-        cta_url=profile.voice.cta_url
-        or f"https://github.com/{context.repo_owner}/{context.repo_name}",
+        cta_url=profile.voice.cta_url or "https://example.com/",
         signals_summary=format_ranked_signals(signals),
         context_summary=summarize_context(context),
     )

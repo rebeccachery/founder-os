@@ -31,17 +31,40 @@ def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
     lines = [
         f"# Social Context — {today}\n\n",
         f"**Company:** {context.company_name} ({context.company_stage})\n",
-        f"**Repo:** {context.repo_owner}/{context.repo_name}\n",
+        f"**Primary repo:** {context.primary_repo or '—'}\n",
         f"**Period:** {context.period_start.date()} → {context.period_end.date()}\n\n",
     ]
 
+    lines.append("## Activity by repo\n\n")
+    if context.repos:
+        lines.append("| Repo | Role | Commits | Source | Top change |\n")
+        lines.append("|------|------|---------|--------|------------|\n")
+        for repo in context.repos:
+            top = repo.top_commit or "—"
+            if len(top) > 50:
+                top = top[:47] + "..."
+            lines.append(
+                f"| {repo.repo_name} | {repo.repo_role} | {repo.commit_count} | "
+                f"{repo.source} | {top} |\n"
+            )
+    else:
+        lines.append("_No repos configured._\n")
+    lines.append("\n")
+
     lines.append("## Commits\n\n")
     if context.commits:
+        current_repo = ""
         for commit in context.commits:
+            if commit.repo_name != current_repo:
+                current_repo = commit.repo_name
+                lines.append(f"### {current_repo}\n\n")
             stats = ""
             if commit.files_changed:
                 stats = f" (+{commit.insertions}/-{commit.deletions}, {commit.files_changed} files)"
-            lines.append(f"- `{commit.sha[:7]}` **{commit.subject}** — {commit.author}{stats}\n")
+            body = f"\n  - {commit.body}" if commit.body else ""
+            lines.append(
+                f"- `{commit.sha[:7]}` **{commit.subject}** — {commit.author}{stats}{body}\n"
+            )
     else:
         lines.append("_No commits in this period._\n")
     lines.append("\n")
@@ -50,7 +73,10 @@ def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
     if context.releases:
         for release in context.releases:
             label = release.name or release.tag
-            lines.append(f"- **{label}** (`{release.tag}`) — {release.published_at.date()}\n")
+            lines.append(
+                f"- **[{release.repo_name}]** {label} (`{release.tag}`) — "
+                f"{release.published_at.date()}\n"
+            )
     else:
         lines.append("_No releases in this period._\n")
     lines.append("\n")
@@ -72,7 +98,8 @@ def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
     if context.features:
         for feature in context.features:
             hook = f" — {feature.hook}" if feature.hook else ""
-            lines.append(f"- **{feature.name}** ({feature.status}){hook}\n")
+            repo = f"**[{feature.repo}]** " if feature.repo else ""
+            lines.append(f"- {repo}**{feature.name}** ({feature.status}){hook}\n")
     else:
         lines.append("_No features in config/features.yaml._\n")
     lines.append("\n")
@@ -129,8 +156,10 @@ def write_content_digest(
     lines.append("## Top signals\n\n")
     if generation.ranked_signals:
         for signal in generation.ranked_signals:
+            repo = signal.source_ref.get("repo")
+            repo_label = f" [{repo}]" if repo else ""
             lines.append(
-                f"- **[{signal.score}]** {signal.title} ({signal.signal_type}) — "
+                f"- **[{signal.score}]**{repo_label} {signal.title} ({signal.signal_type}) — "
                 f"{signal.rank_reason}\n"
             )
     else:

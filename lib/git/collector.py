@@ -6,7 +6,9 @@ from pathlib import Path
 
 import httpx
 
+from lib.git.sanitize import sanitize_commit_body
 from lib.schemas import CommitSignal, MilestoneSignal, ReleaseSignal
+from lib.social.profile import ProductRepoConfig
 
 GITHUB_API = "https://api.github.com"
 _GITHUB_REMOTE_RE = re.compile(
@@ -147,6 +149,66 @@ def collect_local_commits(repo_path: Path, since: datetime) -> list[CommitSignal
     return commits
 
 
+def _repo_html_url(cfg: ProductRepoConfig) -> str:
+    return f"https://github.com/{cfg.owner}/{cfg.name}"
+
+
+def apply_commit_detail(commit: CommitSignal, cfg: ProductRepoConfig) -> CommitSignal:
+    body = commit.body
+    if cfg.commit_detail == "subject_only":
+        body = None
+    elif body and cfg.commit_detail == "subject_and_body":
+        body = sanitize_commit_body(body)
+
+    commit_url = commit.url
+    if cfg.private:
+        commit_url = None
+    elif not commit_url and commit.sha:
+        commit_url = f"{_repo_html_url(cfg)}/commit/{commit.sha}"
+
+    insertions = commit.insertions
+    deletions = commit.deletions
+    files_changed = commit.files_changed
+    if cfg.commit_detail == "subject_only":
+        insertions = 0
+        deletions = 0
+        files_changed = 0
+
+    return commit.model_copy(
+        update={
+            "body": body,
+            "url": commit_url,
+            "insertions": insertions,
+            "deletions": deletions,
+            "files_changed": files_changed,
+            "repo_owner": cfg.owner,
+            "repo_name": cfg.name,
+            "repo_role": cfg.role,
+            "repo_url": _repo_html_url(cfg),
+        }
+    )
+
+
+def tag_release(release: ReleaseSignal, cfg: ProductRepoConfig) -> ReleaseSignal:
+    body = release.body
+    if cfg.commit_detail == "subject_only":
+        body = None
+    elif body:
+        body = sanitize_commit_body(body)
+    return release.model_copy(
+        update={
+            "body": body,
+            "repo_owner": cfg.owner,
+            "repo_name": cfg.name,
+            "repo_role": cfg.role,
+        }
+    )
+
+
+def tag_milestone(milestone: MilestoneSignal, cfg: ProductRepoConfig) -> MilestoneSignal:
+    return milestone.model_copy(update={"repo_name": cfg.name})
+
+
 def fetch_github_commits(
     owner: str,
     repo: str,
@@ -275,6 +337,32 @@ def fetch_github_milestones(owner: str, repo: str) -> list[MilestoneSignal]:
                 )
             )
     return milestones
+
+
+def collect_repo_commits(
+    cfg: ProductRepoConfig,
+    repo_path: Path,
+    since: datetime,
+    *,
+    prefer_local_git: bool = True,
+) -> tuple[list[CommitSignal], str]:
+    raw: list[CommitSignal] = []
+    source = "skipped"
+
+    if cfg.fetch_commits:
+        if prefer_local_git and is_git_repo(repo_path):
+            raw = collect_local_commits(repo_path, since)
+            source = "local"
+        if not raw and source != "local":
+            api_commits = fetch_github_commits(cfg.owner, cfg.name, since)
+            if api_commits:
+                raw = api_commits
+                source = "api"
+            elif source == "skipped":
+                source = "unavailable"
+
+    tagged = [apply_commit_detail(c, cfg) for c in raw]
+    return tagged, source
 
 
 def collect_commits(
