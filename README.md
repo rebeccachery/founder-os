@@ -2,6 +2,8 @@
 
 An internal operating system for solo founders. **Funding Scout** discovers and ranks grants, fellowships, competitions, and accelerators against your founder profile. **OSS Discovery** finds open-source datasets, models, and repos ranked against your language profile. A Next.js dashboard and executive assistant surface the highest-impact opportunities in one place.
 
+Scout is the single source of truth for funding opportunities — grants, fellowships, competitions, and accelerators all live in `scout_opportunities`. The Executive Assistant lets you **track** what you're actively applying to, **pin** priorities, **edit deadlines**, and **save application drafts** without cluttering the briefing with every discovered lead.
+
 ## Architecture
 
 ```mermaid
@@ -192,12 +194,34 @@ Edit `private/config/oss_profile.yaml` (copy from [config/oss_profile.example.ya
 | Route | Description |
 |-------|-------------|
 | `/` | Overview stats and upcoming deadlines |
-| `/scout` | Ranked scout picks (scores, categories, manual saves) |
-| `/assistant` | Executive briefing — priorities, deadlines, application drafts |
+| `/scout` | Ranked scout picks (scores, categories, manual saves, **Track** for Assistant) |
+| `/assistant` | Executive briefing — priorities, deadlines, tracked applications, drafts |
 | `/oss` | OSS datasets, models, repos (Recent · Reference · All) |
 | `/social` | Social content drafts |
 | `/investors` | Investors |
 | `/deadlines` | Redirects to `/assistant` |
+
+Legacy `/funding`, `/grants`, and `/competitions` routes were removed — filter by category on `/scout` instead.
+
+### Executive Assistant workflow
+
+The briefing is intentionally lean. You opt in to what matters instead of seeing every scout hit as an application card.
+
+| Action | Where | Effect |
+|--------|-------|--------|
+| **Track** | Scout page | Adds opportunity to Assistant **Applications** |
+| **+ Add** | Assistant Applications | Pick an untracked scout opportunity to track |
+| **Save draft** | Assistant Applications | Saves response text; auto-tracks the opportunity |
+| **Untrack** | Assistant Applications | Removes tracking (draft remains if saved) |
+| **Pin / Unpin** | Today's priorities | Pinned items always appear at the top |
+| **Dismiss 7d** | Today's priorities | Hides from auto-ranking for one week (scout items) |
+| **Edit deadline** | Priorities, deadlines, applications | Updates `deadline_at` on scout opportunities |
+
+**Applications** shows only tracked opportunities plus any with a saved draft. **Today's priorities** merges pinned items first, then up to seven auto-ranked items (respecting dismissals).
+
+Manual saves (Add Opportunity form or Scout save) auto-track. Saving a non-empty draft auto-tracks as well.
+
+Key SQLite tables: `scout_opportunities`, `assistant_tracks`, `application_drafts`, `executive_briefings`.
 
 ## API endpoints
 
@@ -207,12 +231,17 @@ Interactive docs: http://localhost:8000/docs
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/api/stats` | Dashboard counts |
-| GET | `/api/scout` | Ranked scout opportunities (`category`, `min_score` filters) |
+| GET | `/api/scout` | Ranked scout opportunities (`category`, `min_score`, `exclude_tracked` filters) |
+| PATCH | `/api/scout/{id}` | Update scout opportunity deadline |
+| POST | `/api/opportunities/saved` | Save a manual or Twitter-sourced opportunity (auto-tracks) |
+| GET | `/api/assistant/tracks` | List assistant track rows |
+| PUT | `/api/assistant/tracks/{source_id}` | Pin, track, or dismiss a scout opportunity |
+| DELETE | `/api/assistant/tracks/{source_id}` | Remove tracking / pin / dismiss state |
+| GET | `/api/applications/{source_table}/{source_id}/draft` | Load application response draft |
+| PUT | `/api/applications/{source_table}/{source_id}/draft` | Save application response draft (auto-tracks on non-empty body) |
 | GET | `/api/oss` | Ranked OSS resources (`view`, `resource_type`, `min_score` filters) |
 | GET | `/api/investors` | List investors |
 | GET | `/api/briefing` | Executive assistant briefing |
-| PATCH | `/api/scout/{id}` | Update scout opportunity deadline |
-| PUT | `/api/applications/{source_table}/{source_id}/draft` | Save application response draft |
 | GET | `/api/deadlines?days=30` | Upcoming deadlines |
 | GET | `/api/contacts` | CRM contacts |
 | GET | `/api/agents` | List agent names |
@@ -260,6 +289,8 @@ If you open-source this repo, scrub sensitive files from git history before publ
 2. Copy and edit `private/config/oss_profile.yaml` for target languages and OSS keywords
 3. Tune search queries in `agents/*/queries.yaml` (add overrides in `private/agents/*/queries.yaml`)
 4. Run `python workflows/run_agent.py --agent funding_scout` and review `/scout`
-5. Run `python workflows/run_agent.py --agent oss_discovery` and review `/oss`
-6. Set `SEED_DEMO_DATA=false` once live data is flowing
-7. Configure GitHub Actions secrets for scheduled scans (profiles must be available on the runner — use a private repo or inject config via secrets)
+5. Track opportunities you want to apply to (Scout **Track** or Assistant **+ Add**)
+6. Run `python workflows/run_agent.py --agent executive_assistant` and review `/assistant`
+7. Run `python workflows/run_agent.py --agent oss_discovery` and review `/oss`
+8. Set `SEED_DEMO_DATA=false` once live data is flowing
+9. Configure GitHub Actions secrets for scheduled scans (profiles must be available on the runner — use a private repo or inject config via secrets)
