@@ -5,11 +5,8 @@ const links = [
   { href: "/scout", label: "Scout" },
   { href: "/oss", label: "OSS" },
   { href: "/social", label: "Social" },
-  { href: "/funding", label: "Funding" },
   { href: "/investors", label: "Investors" },
   { href: "/assistant", label: "Assistant" },
-  { href: "/grants", label: "Grants" },
-  { href: "/competitions", label: "Competitions" },
 ];
 
 export function Nav() {

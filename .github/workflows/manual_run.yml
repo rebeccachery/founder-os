@@ -6,19 +6,19 @@ on:
       agent:
         description: "Agent to run (or 'all', 'daily', 'weekly')"
         required: true
-        default: "grants"
+        default: "funding_scout"
         type: choice
         options:
           - all
           - daily
           - weekly
-          - funding
+          - funding_scout
+          - executive_assistant
           - investors
-          - grants
           - crm
           - social
           - research
-          - opportunities
+          - oss_discovery
 
 jobs:
   run:

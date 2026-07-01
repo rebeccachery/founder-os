@@ -33,44 +33,6 @@ def collect_assistant_context(
 
     ctx.deadlines = get_deadlines(conn, days=90)
 
-    for row in list_table(conn, "grants", limit=200):
-        if row.get("status") not in ("new", "reviewed", "applied"):
-            continue
-        due = _parse_date(row.get("deadline_at"))
-        if due and due < stale_cutoff:
-            continue
-        ctx.applications.append(
-            {
-                "title": row["name"],
-                "category": "grant",
-                "due_at": row.get("deadline_at"),
-                "url": row.get("url"),
-                "source_id": row["id"],
-                "source_table": "grants",
-                "status": row.get("status"),
-                "score_total": None,
-            }
-        )
-
-    for row in list_table(conn, "competitions", limit=200):
-        if row.get("status") not in ("new", "reviewed", "applied"):
-            continue
-        due = _parse_date(row.get("deadline_at"))
-        if due and due < stale_cutoff:
-            continue
-        ctx.applications.append(
-            {
-                "title": row["name"],
-                "category": "competition",
-                "due_at": row.get("deadline_at"),
-                "url": row.get("url"),
-                "source_id": row["id"],
-                "source_table": "competitions",
-                "status": row.get("status"),
-                "score_total": None,
-            }
-        )
-
     for row in list_scout_opportunities(conn, limit=200):
         if row.get("status") not in ("new", "reviewed", "applied"):
             continue

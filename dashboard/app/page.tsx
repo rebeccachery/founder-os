@@ -7,9 +7,6 @@ import { api } from "@/lib/api";
 export default async function HomePage() {
   let stats = {
     investors: 0,
-    funding: 0,
-    grants: 0,
-    competitions: 0,
     scout: 0,
     oss: 0,
     social: 0,
@@ -45,15 +42,10 @@ export default async function HomePage() {
         <StatCard label="Investors" value={stats.investors} href="/investors" />
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Funding" value={stats.funding} href="/funding" />
-        <StatCard label="Grants" value={stats.grants} href="/grants" />
-        <StatCard label="Competitions" value={stats.competitions} href="/competitions" />
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Upcoming deadlines (30d)" value={stats.deadlines_upcoming} href="/assistant" />
-      </div>
-
-      <div className="mt-4">
-        <StatCard label="New items to review" value={stats.new_items} />
+        <StatCard label="New items to review" value={stats.new_items} href="/scout" />
+        <StatCard label="Contacts" value={stats.contacts} href="/assistant" />
       </div>
 
       <section className="mt-10">

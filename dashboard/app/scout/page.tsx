@@ -4,6 +4,7 @@ import { AddOpportunityForm } from "@/components/AddOpportunityForm";
 import { DataTable } from "@/components/DataTable";
 import { DeadlineEditor } from "@/components/DeadlineEditor";
 import { ScoutSourceFilter } from "@/components/ScoutSourceFilter";
+import { ScoutTrackButton } from "@/components/ScoutTrackButton";
 import { ExternalLink, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -105,9 +106,18 @@ export default async function ScoutPage({
               label: "Deadline",
               render: (row) => (
                 <DeadlineEditor
-                  sourceTable="scout_opportunities"
                   sourceId={row.id as number}
                   deadlineAt={row.deadline_at as string | null}
+                />
+              ),
+            },
+            {
+              key: "tracked",
+              label: "Assistant",
+              render: (row) => (
+                <ScoutTrackButton
+                  opportunityId={row.id as number}
+                  tracked={Boolean(row.tracked)}
                 />
               ),
             },

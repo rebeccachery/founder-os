@@ -24,50 +24,6 @@ CREATE TABLE IF NOT EXISTS investors (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS funding_opportunities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    organization TEXT,
-    amount TEXT,
-    stage TEXT,
-    description TEXT,
-    url TEXT UNIQUE,
-    status TEXT NOT NULL DEFAULT 'new',
-    source TEXT,
-    raw_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS grants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    funder TEXT,
-    amount TEXT,
-    eligibility TEXT,
-    url TEXT UNIQUE,
-    deadline_at TEXT,
-    status TEXT NOT NULL DEFAULT 'new',
-    source TEXT,
-    raw_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS competitions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    organizer TEXT,
-    prize TEXT,
-    url TEXT UNIQUE,
-    deadline_at TEXT,
-    status TEXT NOT NULL DEFAULT 'new',
-    source TEXT,
-    raw_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS scout_opportunities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -149,8 +105,6 @@ CREATE TABLE IF NOT EXISTS oss_resources (
 CREATE INDEX IF NOT EXISTS idx_scout_score ON scout_opportunities(score_total DESC);
 CREATE INDEX IF NOT EXISTS idx_scout_deadline ON scout_opportunities(deadline_at);
 CREATE INDEX IF NOT EXISTS idx_scout_category ON scout_opportunities(category);
-CREATE INDEX IF NOT EXISTS idx_grants_deadline ON grants(deadline_at);
-CREATE INDEX IF NOT EXISTS idx_competitions_deadline ON competitions(deadline_at);
 CREATE INDEX IF NOT EXISTS idx_investors_status ON investors(status);
 CREATE INDEX IF NOT EXISTS idx_contacts_follow_up ON contacts(next_follow_up_at);
 CREATE INDEX IF NOT EXISTS idx_oss_score ON oss_resources(score_total DESC);
@@ -206,6 +160,21 @@ CREATE TABLE IF NOT EXISTS application_drafts (
 
 CREATE INDEX IF NOT EXISTS idx_application_drafts_source
     ON application_drafts(source_table, source_id);
+
+CREATE TABLE IF NOT EXISTS assistant_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_table TEXT NOT NULL DEFAULT 'scout_opportunities',
+    source_id INTEGER NOT NULL,
+    pin_priority INTEGER NOT NULL DEFAULT 0,
+    track_application INTEGER NOT NULL DEFAULT 1,
+    dismissed_until TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_table, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assistant_tracks_source
+    ON assistant_tracks(source_table, source_id);
 """
 
 
@@ -221,11 +190,21 @@ def purge_test_rows(conn: sqlite3.Connection) -> None:
         )
 
 
+def drop_legacy_opportunity_tables(conn: sqlite3.Connection) -> None:
+    """Remove deprecated tables superseded by scout_opportunities."""
+    conn.execute(
+        "DELETE FROM application_drafts WHERE source_table IN ('grants', 'competitions')"
+    )
+    for table in ("funding_opportunities", "grants", "competitions"):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 def init_db(db_path: Path | None = None) -> None:
     path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA)
+        drop_legacy_opportunity_tables(conn)
         purge_test_rows(conn)
         conn.commit()
 
@@ -259,7 +238,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return dict(row)
 
 
-_DEADLINE_LOCK_TABLES = frozenset({"scout_opportunities", "grants", "competitions"})
+_DEADLINE_LOCK_TABLES = frozenset({"scout_opportunities"})
 
 
 def upsert_by_url(
@@ -333,58 +312,6 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
     cutoff = (date.today() + timedelta(days=days)).isoformat()
     deadlines: list[dict[str, Any]] = []
 
-    grant_rows = conn.execute(
-        """
-        SELECT id, name AS title, deadline_at, url, status
-        FROM grants
-        WHERE deadline_at IS NOT NULL
-          AND deadline_at >= ?
-          AND deadline_at <= ?
-        ORDER BY deadline_at ASC
-        """,
-        (today, cutoff),
-    ).fetchall()
-    for row in grant_rows:
-        deadlines.append(
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "deadline_at": row["deadline_at"],
-                "category": "grant",
-                "source_id": row["id"],
-                "source_table": "grants",
-                "url": row["url"],
-                "is_estimated": False,
-                "status": row["status"],
-            }
-        )
-
-    comp_rows = conn.execute(
-        """
-        SELECT id, name AS title, deadline_at, url, status
-        FROM competitions
-        WHERE deadline_at IS NOT NULL
-          AND deadline_at >= ?
-          AND deadline_at <= ?
-        ORDER BY deadline_at ASC
-        """,
-        (today, cutoff),
-    ).fetchall()
-    for row in comp_rows:
-        deadlines.append(
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "deadline_at": row["deadline_at"],
-                "category": "competition",
-                "source_id": row["id"],
-                "source_table": "competitions",
-                "url": row["url"],
-                "is_estimated": False,
-                "status": row["status"],
-            }
-        )
-
     scout_rows = conn.execute(
         """
         SELECT id, name AS title, deadline_at, url, status, category, source
@@ -450,14 +377,7 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
     upcoming = len(get_deadlines(conn, days=30))
 
     new_items = 0
-    for table in (
-        "investors",
-        "funding_opportunities",
-        "grants",
-        "competitions",
-        "scout_opportunities",
-        "oss_resources",
-    ):
+    for table in ("investors", "scout_opportunities", "oss_resources"):
         row = conn.execute(
             f"SELECT COUNT(*) AS c FROM {table} WHERE status = 'new'"
         ).fetchone()
@@ -470,9 +390,6 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
 
     return {
         "investors": count("investors"),
-        "funding": count("funding_opportunities"),
-        "grants": count("grants"),
-        "competitions": count("competitions"),
         "scout": count("scout_opportunities"),
         "oss": count("oss_resources"),
         "social": social_drafts,
@@ -489,6 +406,7 @@ def list_scout_opportunities(
     category: str | None = None,
     source: str | None = None,
     min_score: float | None = None,
+    exclude_tracked: bool = False,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     clauses: list[str] = []
@@ -511,6 +429,15 @@ def list_scout_opportunities(
     if min_score is not None:
         clauses.append("score_total >= ?")
         params.append(min_score)
+    if exclude_tracked:
+        clauses.append(
+            """
+            id NOT IN (
+                SELECT source_id FROM assistant_tracks
+                WHERE source_table = 'scout_opportunities' AND track_application = 1
+            )
+            """
+        )
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
@@ -526,18 +453,159 @@ def list_scout_opportunities(
     return [_row_to_dict(r) for r in rows]
 
 
-def get_grant(conn: sqlite3.Connection, grant_id: int) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM grants WHERE id = ?", (grant_id,)).fetchone()
+ASSISTANT_TRACK_TABLE = "scout_opportunities"
+
+
+def list_assistant_tracks_map(
+    conn: sqlite3.Connection,
+    source_table: str = ASSISTANT_TRACK_TABLE,
+) -> dict[int, dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT source_id, pin_priority, track_application, dismissed_until, updated_at
+        FROM assistant_tracks
+        WHERE source_table = ?
+        """,
+        (source_table,),
+    ).fetchall()
+    return {
+        int(row["source_id"]): {
+            "pin_priority": bool(row["pin_priority"]),
+            "track_application": bool(row["track_application"]),
+            "dismissed_until": row["dismissed_until"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    }
+
+
+def get_assistant_track(
+    conn: sqlite3.Connection,
+    source_id: int,
+    source_table: str = ASSISTANT_TRACK_TABLE,
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT source_table, source_id, pin_priority, track_application,
+               dismissed_until, created_at, updated_at
+        FROM assistant_tracks
+        WHERE source_table = ? AND source_id = ?
+        """,
+        (source_table, source_id),
+    ).fetchone()
     if not row:
         return None
     return _row_to_dict(row)
 
 
-def get_competition(conn: sqlite3.Connection, competition_id: int) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM competitions WHERE id = ?", (competition_id,)).fetchone()
-    if not row:
-        return None
-    return _row_to_dict(row)
+def upsert_assistant_track(
+    conn: sqlite3.Connection,
+    source_id: int,
+    *,
+    source_table: str = ASSISTANT_TRACK_TABLE,
+    pin_priority: bool | None = None,
+    track_application: bool | None = None,
+    dismissed_until: str | None = None,
+    clear_dismissed: bool = False,
+) -> dict[str, Any]:
+    if source_table != ASSISTANT_TRACK_TABLE:
+        raise ValueError(f"Unsupported source_table: {source_table}")
+
+    exists = conn.execute(
+        "SELECT id FROM scout_opportunities WHERE id = ?",
+        (source_id,),
+    ).fetchone()
+    if not exists:
+        raise ValueError(f"No scout opportunity with id {source_id}")
+
+    existing = get_assistant_track(conn, source_id, source_table)
+    pin = int(pin_priority) if pin_priority is not None else int(existing["pin_priority"]) if existing else 0
+    track = (
+        int(track_application)
+        if track_application is not None
+        else int(existing["track_application"])
+        if existing
+        else 1
+    )
+    if clear_dismissed:
+        dismissed = None
+    elif dismissed_until is not None:
+        dismissed = dismissed_until
+    elif existing:
+        dismissed = existing["dismissed_until"]
+    else:
+        dismissed = None
+
+    conn.execute(
+        """
+        INSERT INTO assistant_tracks (
+            source_table, source_id, pin_priority, track_application, dismissed_until
+        )
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(source_table, source_id) DO UPDATE SET
+            pin_priority = excluded.pin_priority,
+            track_application = excluded.track_application,
+            dismissed_until = excluded.dismissed_until,
+            updated_at = datetime('now')
+        """,
+        (source_table, source_id, pin, track, dismissed),
+    )
+    row = get_assistant_track(conn, source_id, source_table)
+    assert row is not None
+    return row
+
+
+def ensure_assistant_track(
+    conn: sqlite3.Connection,
+    source_id: int,
+    *,
+    track_application: bool = True,
+    pin_priority: bool | None = None,
+) -> dict[str, Any]:
+    existing = get_assistant_track(conn, source_id)
+    if existing:
+        return upsert_assistant_track(
+            conn,
+            source_id,
+            track_application=track_application if track_application else None,
+            pin_priority=pin_priority if pin_priority is not None else None,
+        )
+    return upsert_assistant_track(
+        conn,
+        source_id,
+        pin_priority=pin_priority if pin_priority is not None else False,
+        track_application=track_application,
+    )
+
+
+def delete_assistant_track(
+    conn: sqlite3.Connection,
+    source_id: int,
+    source_table: str = ASSISTANT_TRACK_TABLE,
+) -> bool:
+    cursor = conn.execute(
+        "DELETE FROM assistant_tracks WHERE source_table = ? AND source_id = ?",
+        (source_table, source_id),
+    )
+    return cursor.rowcount > 0
+
+
+def attach_scout_track_flags(
+    conn: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    tracks = list_assistant_tracks_map(conn)
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        track = tracks.get(int(row["id"]))
+        enriched.append(
+            {
+                **row,
+                "tracked": bool(track and track["track_application"]),
+                "pin_priority": bool(track and track["pin_priority"]),
+            }
+        )
+    return enriched
 
 
 def get_scout_opportunity(conn: sqlite3.Connection, opportunity_id: int) -> dict[str, Any] | None:
@@ -550,7 +618,7 @@ def get_scout_opportunity(conn: sqlite3.Connection, opportunity_id: int) -> dict
     return _row_to_dict(row)
 
 
-APPLICATION_DRAFT_TABLES = frozenset({"scout_opportunities", "grants", "competitions"})
+APPLICATION_DRAFT_TABLE = "scout_opportunities"
 
 
 def get_application_draft(
@@ -558,7 +626,7 @@ def get_application_draft(
     source_table: str,
     source_id: int,
 ) -> dict[str, Any] | None:
-    if source_table not in APPLICATION_DRAFT_TABLES:
+    if source_table != APPLICATION_DRAFT_TABLE:
         return None
     row = conn.execute(
         """
@@ -579,7 +647,7 @@ def upsert_application_draft(
     source_id: int,
     body: str,
 ) -> dict[str, Any]:
-    if source_table not in APPLICATION_DRAFT_TABLES:
+    if source_table != APPLICATION_DRAFT_TABLE:
         raise ValueError(f"Unsupported source_table: {source_table}")
 
     exists = conn.execute(
@@ -601,6 +669,8 @@ def upsert_application_draft(
     )
     draft = get_application_draft(conn, source_table, source_id)
     assert draft is not None
+    if body.strip():
+        ensure_assistant_track(conn, source_id, track_application=True)
     return draft
 
 
@@ -937,47 +1007,3 @@ def seed_demo_data(conn: sqlite3.Connection) -> None:
     ]
     for inv in demo_investors:
         upsert_by_url(conn, "investors", inv)
-
-    demo_grants = [
-        {
-            "name": "Small Business Innovation Grant",
-            "funder": "Example Foundation",
-            "amount": "$50,000",
-            "eligibility": "Early-stage startups, US-based",
-            "url": "https://example.com/grants/sbig",
-            "deadline_at": (date.today() + timedelta(days=14)).isoformat(),
-            "status": "new",
-            "source": "seed",
-        },
-    ]
-    for grant in demo_grants:
-        upsert_by_url(conn, "grants", grant)
-
-    demo_comps = [
-        {
-            "name": "Startup Pitch Championship",
-            "organizer": "TechWeek",
-            "prize": "$25,000",
-            "url": "https://example.com/competitions/pitch",
-            "deadline_at": (date.today() + timedelta(days=21)).isoformat(),
-            "status": "new",
-            "source": "seed",
-        },
-    ]
-    for comp in demo_comps:
-        upsert_by_url(conn, "competitions", comp)
-
-    demo_funding = [
-        {
-            "name": "Accelerator Batch Q3",
-            "organization": "LaunchPad",
-            "amount": "$150,000",
-            "stage": "pre-seed",
-            "description": "12-week program with demo day",
-            "url": "https://example.com/funding/launchpad",
-            "status": "new",
-            "source": "seed",
-        },
-    ]
-    for opp in demo_funding:
-        upsert_by_url(conn, "funding_opportunities", opp)

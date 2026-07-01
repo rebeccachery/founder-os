@@ -7,11 +7,13 @@ from api.database import db_session
 from api.deps import verify_api_key
 from lib.assistant.briefing import briefing_needs_rebuild, briefing_to_db_row, build_briefing
 from lib.db import (
+    attach_scout_track_flags,
+    delete_assistant_track,
+    ensure_assistant_track,
     get_application_draft,
+    get_assistant_track,
     get_briefing,
-    get_competition,
     get_deadlines,
-    get_grant,
     get_scout_opportunity,
     get_social_post,
     get_stats,
@@ -19,19 +21,19 @@ from lib.db import (
     list_scout_opportunities,
     list_social_posts,
     list_table,
-    seed_demo_data,
     update_social_post_status,
     upsert_application_draft,
+    upsert_assistant_track,
     upsert_briefing,
 )
 from lib.discovery.profile import load_oss_profile
 from lib.opportunities.intake import save_opportunity
-from lib.opportunities.update import update_record_deadline, update_scout_deadline
+from lib.opportunities.update import update_scout_deadline
 from lib.schemas import (
     ApplicationDraft,
     ApplicationDraftUpdate,
-    CompetitionDeadlineUpdate,
-    GrantDeadlineUpdate,
+    AssistantTrack,
+    AssistantTrackUpdate,
     SavedOpportunity,
     SavedOpportunityCreate,
     ScoutOpportunityUpdate,
@@ -50,34 +52,15 @@ def get_investors(
         return list_table(conn, "investors", status=status, limit=limit)
 
 
-@router.get("/funding")
-def get_funding(
-    status: str | None = None,
-    limit: int = Query(default=100, le=500),
-    _: None = Depends(verify_api_key),
-):
-    with db_session() as conn:
-        return list_table(conn, "funding_opportunities", status=status, limit=limit)
-
-
-@router.get("/grants")
-def get_grants(
-    status: str | None = None,
-    limit: int = Query(default=100, le=500),
-    _: None = Depends(verify_api_key),
-):
-    with db_session() as conn:
-        return list_table(conn, "grants", status=status, limit=limit)
-
-
-@router.get("/competitions")
-def get_competitions(
-    status: str | None = None,
-    limit: int = Query(default=100, le=500),
-    _: None = Depends(verify_api_key),
-):
-    with db_session() as conn:
-        return list_table(conn, "competitions", status=status, limit=limit)
+def _track_to_model(row: dict) -> AssistantTrack:
+    return AssistantTrack(
+        source_table=row["source_table"],
+        source_id=int(row["source_id"]),
+        pin_priority=bool(row["pin_priority"]),
+        track_application=bool(row["track_application"]),
+        dismissed_until=row.get("dismissed_until"),
+        updated_at=row.get("updated_at"),
+    )
 
 
 @router.get("/scout")
@@ -86,18 +69,21 @@ def get_scout(
     category: str | None = None,
     source: str | None = None,
     min_score: float | None = Query(default=None, ge=0, le=100),
+    exclude_tracked: bool = Query(default=False),
     limit: int = Query(default=100, le=500),
     _: None = Depends(verify_api_key),
 ):
     with db_session() as conn:
-        return list_scout_opportunities(
+        rows = list_scout_opportunities(
             conn,
             status=status,
             category=category,
             source=source,
             min_score=min_score,
+            exclude_tracked=exclude_tracked,
             limit=limit,
         )
+        return attach_scout_track_flags(conn, rows)
 
 
 @router.post("/opportunities/saved", response_model=SavedOpportunity)
@@ -113,6 +99,7 @@ def save_opportunity_route(
     try:
         with db_session() as conn:
             row = save_opportunity(conn, payload)
+            ensure_assistant_track(conn, row["id"], track_application=True)
             briefing = build_briefing(conn)
             upsert_briefing(conn, briefing_to_db_row(briefing))
     except ValueError as exc:
@@ -151,34 +138,58 @@ def update_scout_opportunity_route(
     return row
 
 
-@router.patch("/grants/{grant_id}")
-def update_grant_deadline_route(
-    grant_id: int,
-    payload: GrantDeadlineUpdate,
+@router.get("/assistant/tracks", response_model=list[AssistantTrack])
+def list_assistant_tracks_route(_: None = Depends(verify_api_key)):
+    with db_session() as conn:
+        rows = conn.execute(
+            """
+            SELECT source_table, source_id, pin_priority, track_application,
+                   dismissed_until, updated_at
+            FROM assistant_tracks
+            WHERE source_table = 'scout_opportunities'
+            ORDER BY updated_at DESC
+            """
+        ).fetchall()
+        return [_track_to_model(dict(row)) for row in rows]
+
+
+@router.put("/assistant/tracks/{source_id}", response_model=AssistantTrack)
+def upsert_assistant_track_route(
+    source_id: int,
+    payload: AssistantTrackUpdate,
     _: None = Depends(verify_api_key),
 ):
     with db_session() as conn:
-        if not get_grant(conn, grant_id):
-            raise HTTPException(status_code=404, detail="Grant not found")
-        row = update_record_deadline(conn, "grants", grant_id, payload.deadline_at)
-        briefing = build_briefing(conn)
-        upsert_briefing(conn, briefing_to_db_row(briefing))
-    return row
+        try:
+            row = upsert_assistant_track(
+                conn,
+                source_id,
+                pin_priority=payload.pin_priority,
+                track_application=payload.track_application,
+                dismissed_until=(
+                    payload.dismissed_until.isoformat() if payload.dismissed_until else None
+                ),
+                clear_dismissed=payload.clear_dismissed,
+            )
+            briefing = build_briefing(conn)
+            upsert_briefing(conn, briefing_to_db_row(briefing))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _track_to_model(row)
 
 
-@router.patch("/competitions/{competition_id}")
-def update_competition_deadline_route(
-    competition_id: int,
-    payload: CompetitionDeadlineUpdate,
+@router.delete("/assistant/tracks/{source_id}")
+def delete_assistant_track_route(
+    source_id: int,
     _: None = Depends(verify_api_key),
 ):
     with db_session() as conn:
-        if not get_competition(conn, competition_id):
-            raise HTTPException(status_code=404, detail="Competition not found")
-        row = update_record_deadline(conn, "competitions", competition_id, payload.deadline_at)
+        if not get_assistant_track(conn, source_id):
+            raise HTTPException(status_code=404, detail="Track not found")
+        delete_assistant_track(conn, source_id)
         briefing = build_briefing(conn)
         upsert_briefing(conn, briefing_to_db_row(briefing))
-    return row
+    return {"ok": True}
 
 
 @router.get("/applications/{source_table}/{source_id}/draft", response_model=ApplicationDraft)

@@ -79,50 +79,6 @@ class Investor(BaseModel):
     updated_at: datetime | None = None
 
 
-class FundingOpportunity(BaseModel):
-    id: int | None = None
-    name: str
-    organization: str | None = None
-    amount: str | None = None
-    stage: str | None = None
-    description: str | None = None
-    url: str | None = None
-    status: ItemStatus = ItemStatus.NEW
-    source: str | None = None
-    raw_json: dict[str, Any] | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class Grant(BaseModel):
-    id: int | None = None
-    name: str
-    funder: str | None = None
-    amount: str | None = None
-    eligibility: str | None = None
-    url: str | None = None
-    deadline_at: date | None = None
-    status: ItemStatus = ItemStatus.NEW
-    source: str | None = None
-    raw_json: dict[str, Any] | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class Competition(BaseModel):
-    id: int | None = None
-    name: str
-    organizer: str | None = None
-    prize: str | None = None
-    url: str | None = None
-    deadline_at: date | None = None
-    status: ItemStatus = ItemStatus.NEW
-    source: str | None = None
-    raw_json: dict[str, Any] | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
 class Deadline(BaseModel):
     id: int | None = None
     title: str
@@ -187,9 +143,6 @@ class OssResource(BaseModel):
 
 class Stats(BaseModel):
     investors: int
-    funding: int
-    grants: int
-    competitions: int
     scout: int
     oss: int = 0
     social: int = 0
@@ -309,17 +262,28 @@ class BriefingItem(BaseModel):
     status: str | None = None
     has_draft: bool = False
     draft_preview: str | None = None
+    pin_priority: bool = False
+    tracked_application: bool = False
+    priority_source: str = "auto"
+
+
+class AssistantTrackUpdate(BaseModel):
+    pin_priority: bool | None = None
+    track_application: bool | None = None
+    dismissed_until: date | None = None
+    clear_dismissed: bool = False
+
+
+class AssistantTrack(BaseModel):
+    source_table: str
+    source_id: int
+    pin_priority: bool
+    track_application: bool
+    dismissed_until: str | None = None
+    updated_at: str | None = None
 
 
 class ScoutOpportunityUpdate(BaseModel):
-    deadline_at: date | None = None
-
-
-class GrantDeadlineUpdate(BaseModel):
-    deadline_at: date | None = None
-
-
-class CompetitionDeadlineUpdate(BaseModel):
     deadline_at: date | None = None
 
 

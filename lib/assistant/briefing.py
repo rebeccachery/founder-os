@@ -5,8 +5,23 @@ import sqlite3
 from lib.assistant.collector import collect_assistant_context
 from lib.assistant.conflicts import detect_conflicts
 from lib.assistant.ranker import item_to_briefing, rank_priorities
-from lib.db import list_application_drafts_bulk
+from lib.db import list_application_drafts_bulk, list_assistant_tracks_map
 from lib.schemas import BriefingItem, ExecutiveBriefing
+
+
+def _enrich_with_track(item: dict, tracks: dict[int, dict]) -> dict:
+    sid = item.get("source_id")
+    track = tracks.get(int(sid)) if sid is not None else None
+    if track:
+        item = {
+            **item,
+            "pin_priority": track.get("pin_priority", False),
+            "tracked_application": track.get("track_application", False),
+        }
+    else:
+        item.setdefault("pin_priority", False)
+        item.setdefault("tracked_application", False)
+    return item
 
 
 def build_briefing(
@@ -15,8 +30,9 @@ def build_briefing(
 ) -> ExecutiveBriefing:
     today = briefing_date or date.today()
     ctx = collect_assistant_context(conn, today)
+    tracks = list_assistant_tracks_map(conn)
 
-    priorities = rank_priorities(ctx)
+    priorities = rank_priorities(ctx, tracks)
     conflicts = detect_conflicts(ctx)
 
     follow_ups = [
@@ -67,13 +83,20 @@ def build_briefing(
 
     applications: list[BriefingItem] = []
     for app in ctx.applications:
-        item = item_to_briefing(app, today)
-        key = (app.get("source_table"), app.get("source_id"))
-        if key[0] and key[1] is not None:
-            body = draft_bodies.get((key[0], key[1]))
-            if body:
-                preview = body[:120] + ("…" if len(body) > 120 else "")
-                item = item.model_copy(update={"has_draft": True, "draft_preview": preview})
+        enriched = _enrich_with_track(app, tracks)
+        key = (enriched.get("source_table"), enriched.get("source_id"))
+        body = draft_bodies.get((key[0], key[1])) if key[0] and key[1] is not None else None
+        has_draft = bool(body)
+        is_tracked = bool(enriched.get("tracked_application"))
+
+        if not is_tracked and not has_draft:
+            continue
+
+        item = item_to_briefing(enriched, today)
+        if has_draft and body:
+            preview = body[:120] + ("…" if len(body) > 120 else "")
+            item = item.model_copy(update={"has_draft": True, "draft_preview": preview})
+        item = item.model_copy(update={"tracked_application": is_tracked})
         applications.append(item)
 
     applications.sort(key=lambda i: (-i.priority_score, i.due_at or "9999"))
@@ -97,13 +120,16 @@ def build_briefing(
 
 
 def briefing_needs_rebuild(briefing: dict) -> bool:
-    """Cached briefings before source_table/draft fields need regeneration."""
+    """Cached briefings missing newer fields need regeneration."""
     for section in ("deadlines", "applications", "priorities", "follow_ups"):
         for item in briefing.get(section, []):
             if item.get("source_id") is not None and not item.get("source_table"):
                 return True
     for item in briefing.get("applications", []):
-        if item.get("source_id") is not None and "has_draft" not in item:
+        if item.get("source_id") is not None and "tracked_application" not in item:
+            return True
+    for item in briefing.get("priorities", []):
+        if "priority_source" not in item:
             return True
     return False
 

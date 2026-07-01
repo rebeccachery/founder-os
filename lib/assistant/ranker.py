@@ -37,6 +37,8 @@ def _reason_for_item(item: dict, today: date) -> str:
     days = _days_until(due, today)
     category = item.get("category", "")
 
+    if item.get("pin_priority"):
+        return "Pinned priority"
     if days is not None and days < 0:
         return f"Overdue by {abs(days)} day{'s' if abs(days) != 1 else ''}"
     if days == 0:
@@ -81,6 +83,9 @@ def score_item(item: dict, today: date) -> float:
     if item.get("source") in ("manual", "twitter"):
         score += 10.0
 
+    if item.get("pin_priority"):
+        score += 100.0
+
     return round(score, 1)
 
 
@@ -95,47 +100,110 @@ def item_to_briefing(item: dict, today: date) -> BriefingItem:
         source_id=item.get("source_id"),
         source_table=item.get("source_table"),
         status=item.get("status"),
+        pin_priority=bool(item.get("pin_priority")),
+        tracked_application=bool(item.get("tracked_application")),
+        priority_source=item.get("priority_source", "auto"),
     )
 
 
-def rank_priorities(ctx: AssistantContext, limit: int = 7) -> list[BriefingItem]:
+def _is_dismissed(track: dict | None, today: date) -> bool:
+    if not track or not track.get("dismissed_until"):
+        return False
+    dismissed_until = _parse_date(track["dismissed_until"])
+    return dismissed_until is not None and dismissed_until >= today
+
+
+def _merge_track_fields(item: dict, track: dict | None) -> dict:
+    merged = dict(item)
+    if track:
+        merged["pin_priority"] = track.get("pin_priority", False)
+        merged["tracked_application"] = track.get("track_application", False)
+        merged["dismissed"] = _is_dismissed(track, date.today())
+    else:
+        merged.setdefault("pin_priority", False)
+        merged.setdefault("tracked_application", False)
+        merged.setdefault("dismissed", False)
+    return merged
+
+
+def rank_priorities(
+    ctx: AssistantContext,
+    tracks: dict[int, dict],
+    *,
+    limit: int = 7,
+) -> list[BriefingItem]:
     today = ctx.briefing_date
+    pinned_raw: list[dict] = []
     candidates: list[dict] = []
 
     for row in ctx.deadlines:
-        candidates.append(
-            {
-                "title": row["title"],
-                "category": row["category"].replace("scout:", "") if row.get("category") else "deadline",
-                "due_at": row.get("deadline_at"),
-                "url": row.get("url"),
-                "source_id": row.get("source_id"),
-                "source_table": row.get("source_table"),
-                "status": row.get("status"),
-                "source": row.get("source"),
-            }
-        )
+        raw = {
+            "title": row["title"],
+            "category": row["category"].replace("scout:", "") if row.get("category") else "deadline",
+            "due_at": row.get("deadline_at"),
+            "url": row.get("url"),
+            "source_id": row.get("source_id"),
+            "source_table": row.get("source_table"),
+            "status": row.get("status"),
+            "source": row.get("source"),
+        }
+        sid = raw.get("source_id")
+        track = tracks.get(int(sid)) if sid is not None else None
+        raw = _merge_track_fields(raw, track)
+        if raw.get("pin_priority") and raw.get("source_table") == "scout_opportunities":
+            raw["priority_source"] = "pinned"
+            pinned_raw.append(raw)
+        candidates.append(raw)
 
-    candidates.extend(ctx.follow_ups)
-    candidates.extend(ctx.launches)
+    for follow_up in ctx.follow_ups:
+        candidates.append(_merge_track_fields(follow_up, None))
+
+    for launch in ctx.launches:
+        candidates.append(_merge_track_fields(launch, None))
 
     for app in ctx.applications:
-        due = _parse_date(app.get("due_at"))
+        sid = app.get("source_id")
+        track = tracks.get(int(sid)) if sid is not None else None
+        raw = _merge_track_fields(app, track)
+        due = _parse_date(raw.get("due_at"))
         if due is not None and due < today - timedelta(days=7):
             continue
+        if raw.get("pin_priority"):
+            raw["priority_source"] = "pinned"
+            key = (raw["title"], raw.get("due_at"), raw.get("source_id"))
+            if not any(
+                (p["title"], p.get("due_at"), p.get("source_id")) == key for p in pinned_raw
+            ):
+                pinned_raw.append(raw)
+            continue
+        if _is_dismissed(track, today):
+            continue
         if due is None or due <= today + timedelta(days=14):
-            candidates.append(app)
+            candidates.append(raw)
 
     seen: set[tuple[str, str | None, int | None]] = set()
-    items: list[BriefingItem] = []
+    pinned_items: list[BriefingItem] = []
+    for raw in sorted(pinned_raw, key=lambda r: r.get("due_at") or "9999"):
+        key = (raw["title"], raw.get("due_at"), raw.get("source_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        pinned_items.append(item_to_briefing(raw, today))
+
+    auto_items: list[BriefingItem] = []
     for raw in candidates:
         key = (raw["title"], raw.get("due_at"), raw.get("source_id"))
         if key in seen:
             continue
         seen.add(key)
-        briefing = item_to_briefing(raw, today)
+        briefing = item_to_briefing({**raw, "priority_source": "auto"}, today)
         if briefing.priority_score >= 10 or _parse_date(raw.get("due_at")) == today:
-            items.append(briefing)
+            auto_items.append(briefing)
 
-    items.sort(key=lambda i: (-i.priority_score, i.due_at or "9999"))
-    return items[:limit]
+    auto_items.sort(key=lambda i: (-i.priority_score, i.due_at or "9999"))
+
+    if len(pinned_items) >= limit:
+        return pinned_items
+
+    slots = limit - len(pinned_items)
+    return pinned_items + auto_items[:slots]

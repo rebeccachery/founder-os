@@ -7,6 +7,7 @@ import { ExternalLink, StatusBadge, formatDate } from "@/components/ui";
 import { BriefingDeadlineCell } from "@/components/DeadlineEditor";
 import {
   type BriefingItem,
+  deleteAssistantTrack,
   getApplicationDraft,
   saveApplicationDraft,
 } from "@/lib/api";
@@ -31,9 +32,7 @@ export function ApplicationDraftCard({ item }: { item: BriefingItem }) {
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const canDraft =
-    item.source_table != null &&
-    item.source_id != null &&
-    ["scout_opportunities", "grants", "competitions"].includes(item.source_table);
+    item.source_table === "scout_opportunities" && item.source_id != null;
 
   const dirty = body !== savedBody;
 
@@ -106,6 +105,23 @@ export function ApplicationDraftCard({ item }: { item: BriefingItem }) {
     setError(null);
   }
 
+  async function handleUntrack() {
+    if (!item.source_id) return;
+    if (dirty && !window.confirm("You have unsaved draft changes. Untrack anyway?")) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAssistantTrack(item.source_id);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to untrack");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <article className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -150,7 +166,7 @@ export function ApplicationDraftCard({ item }: { item: BriefingItem }) {
       </div>
 
       {canDraft && (
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           {!expanded ? (
             <button
               type="button"
@@ -160,7 +176,7 @@ export function ApplicationDraftCard({ item }: { item: BriefingItem }) {
               {item.has_draft ? "Edit response draft" : "Write response draft"}
             </button>
           ) : (
-            <div className="space-y-3">
+            <div className="w-full space-y-3">
               {loading ? (
                 <p className="text-sm text-zinc-500">Loading draft…</p>
               ) : (
@@ -210,6 +226,16 @@ export function ApplicationDraftCard({ item }: { item: BriefingItem }) {
                 </button>
               </div>
             </div>
+          )}
+          {item.tracked_application && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleUntrack}
+              className="text-xs text-zinc-500 hover:text-zinc-300"
+            >
+              Untrack
+            </button>
           )}
         </div>
       )}

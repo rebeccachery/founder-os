@@ -1,6 +1,6 @@
 # Founder OS
 
-An internal operating system for solo founders. AI agents continuously discover funding opportunities, investors, grants, and startup competitions, while **Funding Scout** ranks them against your founder profile. **OSS Discovery** finds open-source datasets, models, and repos ranked against your language profile. A Next.js dashboard surfaces the highest-impact opportunities in one place.
+An internal operating system for solo founders. **Funding Scout** discovers and ranks grants, fellowships, competitions, and accelerators against your founder profile. **OSS Discovery** finds open-source datasets, models, and repos ranked against your language profile. A Next.js dashboard and executive assistant surface the highest-impact opportunities in one place.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ flowchart LR
 founder-os/
 ├── config/          # Sample configs (*.example.yaml) — safe to publish
 ├── private/         # Your real profiles, notes, query overrides (gitignored)
-├── agents/          # Domain agents (funding, investors, grants, …)
+├── agents/          # Domain agents (funding_scout, investors, oss_discovery, …)
 ├── workflows/       # CLI runner + GitHub Actions
 ├── storage/         # SQLite database + raw exports (gitignored)
 ├── reports/         # Generated markdown digests (gitignored)
@@ -116,7 +116,7 @@ Dashboard: http://localhost:3000
 # Ranked scout (recommended first run)
 python workflows/run_agent.py --agent funding_scout
 
-# Daily scan: funding_scout, grants, opportunities, funding
+# Daily scan: funding_scout + executive_assistant
 python workflows/run_agent.py --daily
 
 # Weekly scan: investors, research, oss_discovery
@@ -178,9 +178,7 @@ Edit `private/config/oss_profile.yaml` (copy from [config/oss_profile.example.ya
 | Agent | Schedule | Output | Doc |
 |-------|----------|--------|-----|
 | `funding_scout` | Daily | `scout_opportunities`, `reports/scout_*.md` | [agents/funding_scout/README.md](agents/funding_scout/README.md) |
-| `grants` | Daily | `grants` | [agents/grants/README.md](agents/grants/README.md) |
-| `opportunities` | Daily | `competitions` | [agents/opportunities/README.md](agents/opportunities/README.md) |
-| `funding` | Daily | `funding_opportunities` | [agents/funding/README.md](agents/funding/README.md) |
+| `executive_assistant` | Daily | `executive_briefings` | [agents/executive_assistant/README.md](agents/executive_assistant/README.md) |
 | `investors` | Weekly | `investors` | [agents/investors/README.md](agents/investors/README.md) |
 | `research` | Weekly | `reports/research_*.md` | [agents/research/README.md](agents/research/README.md) |
 | `oss_discovery` | Weekly | `oss_resources`, `reports/oss_*.md` | [agents/oss_discovery/README.md](agents/oss_discovery/README.md) |
@@ -194,13 +192,12 @@ Edit `private/config/oss_profile.yaml` (copy from [config/oss_profile.example.ya
 | Route | Description |
 |-------|-------------|
 | `/` | Overview stats and upcoming deadlines |
-| `/scout` | Ranked scout picks (scores, categories) |
+| `/scout` | Ranked scout picks (scores, categories, manual saves) |
+| `/assistant` | Executive briefing — priorities, deadlines, application drafts |
 | `/oss` | OSS datasets, models, repos (Recent · Reference · All) |
-| `/funding` | Funding opportunities |
+| `/social` | Social content drafts |
 | `/investors` | Investors |
-| `/grants` | Grants |
-| `/competitions` | Competitions and pitch events |
-| `/deadlines` | Upcoming deadlines across sources |
+| `/deadlines` | Redirects to `/assistant` |
 
 ## API endpoints
 
@@ -213,9 +210,9 @@ Interactive docs: http://localhost:8000/docs
 | GET | `/api/scout` | Ranked scout opportunities (`category`, `min_score` filters) |
 | GET | `/api/oss` | Ranked OSS resources (`view`, `resource_type`, `min_score` filters) |
 | GET | `/api/investors` | List investors |
-| GET | `/api/funding` | List funding opportunities |
-| GET | `/api/grants` | List grants |
-| GET | `/api/competitions` | List competitions |
+| GET | `/api/briefing` | Executive assistant briefing |
+| PATCH | `/api/scout/{id}` | Update scout opportunity deadline |
+| PUT | `/api/applications/{source_table}/{source_id}/draft` | Save application response draft |
 | GET | `/api/deadlines?days=30` | Upcoming deadlines |
 | GET | `/api/contacts` | CRM contacts |
 | GET | `/api/agents` | List agent names |
@@ -239,11 +236,9 @@ Configure secrets in your repo:
 
 Workflows:
 
-- **Daily Scan** — `funding_scout`, grants, opportunities, funding (6am UTC)
+- **Daily Scan** — `funding_scout`, `executive_assistant` (6am UTC)
 - **Weekly Digest** — investors, research, `oss_discovery` (Mon 8am UTC)
 - **Manual Agent Run** — pick an agent from the Actions tab
-
-Note: the Manual Agent Run workflow does not yet list `funding_scout` or `oss_discovery` as choices — use the CLI or extend [.github/workflows/manual_run.yml](.github/workflows/manual_run.yml) if needed.
 
 ## Public vs private
 

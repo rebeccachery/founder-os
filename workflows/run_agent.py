@@ -19,18 +19,15 @@ from lib.db import get_connection, init_db  # noqa: E402
 
 AGENT_MODULES = {
     "funding_scout": ("agents.funding_scout.agent", "FundingScoutAgent"),
-    "funding": ("agents.funding.agent", "FundingAgent"),
     "investors": ("agents.investors.agent", "InvestorsAgent"),
-    "grants": ("agents.grants.agent", "GrantsAgent"),
     "crm": ("agents.crm.agent", "CrmAgent"),
     "social": ("agents.social.agent", "SocialAgent"),
     "research": ("agents.research.agent", "ResearchAgent"),
-    "opportunities": ("agents.opportunities.agent", "OpportunitiesAgent"),
     "oss_discovery": ("agents.oss_discovery.agent", "OssDiscoveryAgent"),
     "executive_assistant": ("agents.executive_assistant.agent", "ExecutiveAssistantAgent"),
 }
 
-DAILY_AGENTS = ["funding_scout", "grants", "opportunities", "funding", "executive_assistant"]
+DAILY_AGENTS = ["funding_scout", "executive_assistant"]
 WEEKLY_AGENTS = ["investors", "research", "oss_discovery"]
 
 

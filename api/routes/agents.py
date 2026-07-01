@@ -13,13 +13,10 @@ AGENTS_DIR = ROOT / "agents"
 
 AGENT_MODULES = {
     "funding_scout": "agents.funding_scout.agent.FundingScoutAgent",
-    "funding": "agents.funding.agent.FundingAgent",
     "investors": "agents.investors.agent.InvestorsAgent",
-    "grants": "agents.grants.agent.GrantsAgent",
     "crm": "agents.crm.agent.CrmAgent",
     "social": "agents.social.agent.SocialAgent",
     "research": "agents.research.agent.ResearchAgent",
-    "opportunities": "agents.opportunities.agent.OpportunitiesAgent",
     "oss_discovery": "agents.oss_discovery.agent.OssDiscoveryAgent",
     "executive_assistant": "agents.executive_assistant.agent.ExecutiveAssistantAgent",
 }

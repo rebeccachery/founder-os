@@ -4,23 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { formatDate } from "@/components/ui";
-import { type DeadlineSourceTable, updateDeadline } from "@/lib/api";
-
-const EDITABLE_TABLES: DeadlineSourceTable[] = [
-  "scout_opportunities",
-  "grants",
-  "competitions",
-];
+import { updateScoutDeadline } from "@/lib/api";
 
 interface DeadlineEditorProps {
-  sourceTable: DeadlineSourceTable;
   sourceId: number;
   deadlineAt: string | null;
   compact?: boolean;
 }
 
 export function DeadlineEditor({
-  sourceTable,
   sourceId,
   deadlineAt,
   compact = false,
@@ -41,9 +33,7 @@ export function DeadlineEditor({
     setBusy(true);
     setError(null);
     try {
-      await updateDeadline(sourceTable, sourceId, {
-        deadline_at: nextValue,
-      });
+      await updateScoutDeadline(sourceId, { deadline_at: nextValue });
       setEditing(false);
       router.refresh();
     } catch (err) {
@@ -131,14 +121,9 @@ export function BriefingDeadlineCell({
   sourceId,
   sourceTable,
 }: BriefingDeadlineCellProps) {
-  if (
-    sourceId != null &&
-    sourceTable &&
-    EDITABLE_TABLES.includes(sourceTable as DeadlineSourceTable)
-  ) {
+  if (sourceTable === "scout_opportunities" && sourceId != null) {
     return (
       <DeadlineEditor
-        sourceTable={sourceTable as DeadlineSourceTable}
         sourceId={sourceId}
         deadlineAt={dueAt}
         compact

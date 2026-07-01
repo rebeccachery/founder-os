@@ -24,6 +24,9 @@ export interface BriefingItem {
   status: string | null;
   has_draft?: boolean;
   draft_preview?: string | null;
+  pin_priority?: boolean;
+  tracked_application?: boolean;
+  priority_source?: string;
 }
 
 export interface BriefingConflict {
@@ -46,9 +49,6 @@ export interface ExecutiveBriefing {
 
 export interface Stats {
   investors: number;
-  funding: number;
-  grants: number;
-  competitions: number;
   scout: number;
   oss: number;
   social: number;
@@ -78,38 +78,6 @@ export interface Investor {
   status: string;
 }
 
-export interface FundingOpportunity {
-  id: number;
-  name: string;
-  organization: string | null;
-  amount: string | null;
-  stage: string | null;
-  description: string | null;
-  url: string | null;
-  status: string;
-}
-
-export interface Grant {
-  id: number;
-  name: string;
-  funder: string | null;
-  amount: string | null;
-  eligibility: string | null;
-  url: string | null;
-  deadline_at: string | null;
-  status: string;
-}
-
-export interface Competition {
-  id: number;
-  name: string;
-  organizer: string | null;
-  prize: string | null;
-  url: string | null;
-  deadline_at: string | null;
-  status: string;
-}
-
 export interface ScoutOpportunity {
   id: number;
   name: string;
@@ -124,6 +92,8 @@ export interface ScoutOpportunity {
   source: string | null;
   score_total: number | null;
   rank_reason: string | null;
+  tracked?: boolean;
+  pin_priority?: boolean;
 }
 
 export interface SavedOpportunityInput {
@@ -195,13 +165,15 @@ const apiHeaders = () => ({
 export const api = {
   stats: () => fetchApi<Stats>("/api/stats"),
   investors: () => fetchApi<Investor[]>("/api/investors"),
-  funding: () => fetchApi<FundingOpportunity[]>("/api/funding"),
-  grants: () => fetchApi<Grant[]>("/api/grants"),
-  competitions: () => fetchApi<Competition[]>("/api/competitions"),
-  scout: (opts?: { minScore?: number; source?: "manual" | "agent" }) => {
+  scout: (opts?: {
+    minScore?: number;
+    source?: "manual" | "agent";
+    excludeTracked?: boolean;
+  }) => {
     const params = new URLSearchParams();
     if (opts?.minScore != null) params.set("min_score", String(opts.minScore));
     if (opts?.source) params.set("source", opts.source);
+    if (opts?.excludeTracked) params.set("exclude_tracked", "true");
     const qs = params.toString();
     return fetchApi<ScoutOpportunity[]>(`/api/scout${qs ? `?${qs}` : ""}`);
   },
@@ -229,18 +201,11 @@ export const api = {
   },
 };
 
-export type DeadlineSourceTable = "scout_opportunities" | "grants" | "competitions";
-
-export async function updateDeadline(
-  sourceTable: DeadlineSourceTable,
+export async function updateScoutDeadline(
   id: number,
   payload: { deadline_at?: string | null }
-): Promise<ScoutOpportunity | Grant | Competition> {
-  const path =
-    sourceTable === "scout_opportunities"
-      ? `/api/scout/${id}`
-      : `/api/${sourceTable}/${id}`;
-  const res = await fetch(`${API_URL}${path}`, {
+): Promise<ScoutOpportunity> {
+  const res = await fetch(`${API_URL}/api/scout/${id}`, {
     method: "PATCH",
     headers: apiHeaders(),
     body: JSON.stringify(payload),
@@ -253,19 +218,65 @@ export async function updateDeadline(
   return res.json();
 }
 
-/** @deprecated Use updateDeadline instead */
-export async function updateScoutOpportunity(
-  id: number,
-  payload: { deadline_at?: string | null }
-): Promise<ScoutOpportunity> {
-  return updateDeadline("scout_opportunities", id, payload) as Promise<ScoutOpportunity>;
-}
-
 export interface ApplicationDraft {
   source_table: string;
   source_id: number;
   body: string;
   updated_at: string | null;
+}
+
+export interface AssistantTrack {
+  source_table: string;
+  source_id: number;
+  pin_priority: boolean;
+  track_application: boolean;
+  dismissed_until: string | null;
+  updated_at: string | null;
+}
+
+export interface AssistantTrackUpdate {
+  pin_priority?: boolean;
+  track_application?: boolean;
+  dismissed_until?: string | null;
+  clear_dismissed?: boolean;
+}
+
+export async function upsertAssistantTrack(
+  sourceId: number,
+  payload: AssistantTrackUpdate
+): Promise<AssistantTrack> {
+  const res = await fetch(`${API_URL}/api/assistant/tracks/${sourceId}`, {
+    method: "PUT",
+    headers: apiHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = typeof body.detail === "string" ? body.detail : `API error: ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function deleteAssistantTrack(sourceId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/api/assistant/tracks/${sourceId}`, {
+    method: "DELETE",
+    headers: apiHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} DELETE track`);
+  }
+}
+
+export async function fetchScoutPicker(): Promise<ScoutOpportunity[]> {
+  const res = await fetch(`${API_URL}/api/scout?exclude_tracked=true&limit=100`, {
+    headers: { "X-API-Key": API_KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} scout picker`);
+  }
+  return res.json();
 }
 
 export async function getApplicationDraft(

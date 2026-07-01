@@ -6,7 +6,7 @@ import { ConflictAlert } from "@/components/ConflictAlert";
 import { DataTable } from "@/components/DataTable";
 import { PriorityList } from "@/components/PriorityList";
 import { ExternalLink, StatusBadge, formatDate } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type BriefingItem } from "@/lib/api";
 
 function formatGeneratedAt(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
@@ -29,36 +29,36 @@ export default async function AssistantPage() {
 
   const itemColumns = [
     {
-      key: "title",
+      key: "title" as const,
       label: "Title",
-      render: (row: Record<string, unknown>) =>
+      render: (row: BriefingItem) =>
         row.url ? (
-          <ExternalLink url={row.url as string}>{row.title as string}</ExternalLink>
+          <ExternalLink url={row.url}>{row.title}</ExternalLink>
         ) : (
-          (row.title as string)
+          row.title
         ),
     },
-    { key: "category", label: "Type" },
+    { key: "category" as const, label: "Type" },
     {
-      key: "due_at",
+      key: "due_at" as const,
       label: "Due",
-      render: (row: Record<string, unknown>) => (
+      render: (row: BriefingItem) => (
         <BriefingDeadlineCell
-          dueAt={row.due_at as string | null}
-          sourceId={row.source_id as number | null}
-          sourceTable={row.source_table as string | null}
+          dueAt={row.due_at}
+          sourceId={row.source_id}
+          sourceTable={row.source_table ?? null}
         />
       ),
     },
     {
-      key: "reason",
+      key: "reason" as const,
       label: "Note",
     },
     {
-      key: "status",
+      key: "status" as const,
       label: "Status",
-      render: (row: Record<string, unknown>) =>
-        row.status ? <StatusBadge status={row.status as string} /> : "—",
+      render: (row: BriefingItem) =>
+        row.status ? <StatusBadge status={row.status} /> : "—",
     },
   ];
 
@@ -142,9 +142,9 @@ export default async function AssistantPage() {
 
         <BriefingSection
           title="Applications"
-          description="Open grant, fellowship, and competition applications to review or submit."
+          description="Tracked opportunities you're actively applying to — add from Scout or save a draft."
           isEmpty={!briefing?.applications.length}
-          emptyMessage="No open applications. Check Scout for new opportunities."
+          emptyMessage="No tracked applications. Use + Add to pick from Scout."
         >
           {briefing && <ApplicationDraftSection items={briefing.applications} />}
         </BriefingSection>
