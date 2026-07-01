@@ -1,5 +1,6 @@
 import { DataTable } from "@/components/DataTable";
-import { ExternalLink, StatusBadge, formatDate } from "@/components/ui";
+import { DeadlineEditor } from "@/components/DeadlineEditor";
+import { ExternalLink, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 
 export default async function CompetitionsPage() {
@@ -30,7 +31,13 @@ export default async function CompetitionsPage() {
             {
               key: "deadline_at",
               label: "Deadline",
-              render: (row) => formatDate(row.deadline_at as string | null),
+              render: (row) => (
+                <DeadlineEditor
+                  sourceTable="competitions"
+                  sourceId={row.id as number}
+                  deadlineAt={row.deadline_at as string | null}
+                />
+              ),
             },
             {
               key: "status",

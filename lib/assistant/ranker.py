@@ -93,6 +93,7 @@ def item_to_briefing(item: dict, today: date) -> BriefingItem:
         reason=_reason_for_item(item, today),
         url=item.get("url"),
         source_id=item.get("source_id"),
+        source_table=item.get("source_table"),
         status=item.get("status"),
     )
 
@@ -109,6 +110,7 @@ def rank_priorities(ctx: AssistantContext, limit: int = 7) -> list[BriefingItem]
                 "due_at": row.get("deadline_at"),
                 "url": row.get("url"),
                 "source_id": row.get("source_id"),
+                "source_table": row.get("source_table"),
                 "status": row.get("status"),
                 "source": row.get("source"),
             }

@@ -193,6 +193,19 @@ CREATE TABLE IF NOT EXISTS executive_briefings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_briefing_date ON executive_briefings(briefing_date DESC);
+
+CREATE TABLE IF NOT EXISTS application_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_table TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_table, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_drafts_source
+    ON application_drafts(source_table, source_id);
 """
 
 
@@ -246,6 +259,9 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return dict(row)
 
 
+_DEADLINE_LOCK_TABLES = frozenset({"scout_opportunities", "grants", "competitions"})
+
+
 def upsert_by_url(
     conn: sqlite3.Connection,
     table: str,
@@ -255,6 +271,23 @@ def upsert_by_url(
     url = data.get(url_key)
     if not url:
         raise ValueError(f"{table} row requires {url_key}")
+
+    if table in _DEADLINE_LOCK_TABLES:
+        existing = conn.execute(
+            f"SELECT * FROM {table} WHERE {url_key} = ?", (url,)
+        ).fetchone()
+        if existing:
+            existing_raw = _parse_json(existing["raw_json"]) or {}
+            if existing_raw.get("deadline_locked"):
+                data = {**data, "deadline_at": existing["deadline_at"]}
+                incoming_raw = data.get("raw_json")
+                if isinstance(incoming_raw, dict):
+                    merged = {
+                        **incoming_raw,
+                        "deadline_locked": True,
+                        "deadline_source": existing_raw.get("deadline_source", "manual"),
+                    }
+                    data = {**data, "raw_json": merged}
 
     raw_json = data.get("raw_json")
     if isinstance(raw_json, dict):
@@ -319,6 +352,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
                 "deadline_at": row["deadline_at"],
                 "category": "grant",
                 "source_id": row["id"],
+                "source_table": "grants",
                 "url": row["url"],
                 "is_estimated": False,
                 "status": row["status"],
@@ -344,6 +378,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
                 "deadline_at": row["deadline_at"],
                 "category": "competition",
                 "source_id": row["id"],
+                "source_table": "competitions",
                 "url": row["url"],
                 "is_estimated": False,
                 "status": row["status"],
@@ -369,6 +404,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
                 "deadline_at": row["deadline_at"],
                 "category": f"scout:{row['category']}",
                 "source_id": row["id"],
+                "source_table": "scout_opportunities",
                 "url": row["url"],
                 "is_estimated": False,
                 "status": row["status"],
@@ -395,6 +431,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
                 "deadline_at": row["deadline_at"],
                 "category": "crm",
                 "source_id": row["id"],
+                "source_table": "contacts",
                 "url": row["url"],
                 "is_estimated": False,
                 "status": row["status"],
@@ -487,6 +524,102 @@ def list_scout_opportunities(
         params,
     ).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+def get_grant(conn: sqlite3.Connection, grant_id: int) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM grants WHERE id = ?", (grant_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def get_competition(conn: sqlite3.Connection, competition_id: int) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM competitions WHERE id = ?", (competition_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def get_scout_opportunity(conn: sqlite3.Connection, opportunity_id: int) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM scout_opportunities WHERE id = ?",
+        (opportunity_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+APPLICATION_DRAFT_TABLES = frozenset({"scout_opportunities", "grants", "competitions"})
+
+
+def get_application_draft(
+    conn: sqlite3.Connection,
+    source_table: str,
+    source_id: int,
+) -> dict[str, Any] | None:
+    if source_table not in APPLICATION_DRAFT_TABLES:
+        return None
+    row = conn.execute(
+        """
+        SELECT source_table, source_id, body, updated_at
+        FROM application_drafts
+        WHERE source_table = ? AND source_id = ?
+        """,
+        (source_table, source_id),
+    ).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def upsert_application_draft(
+    conn: sqlite3.Connection,
+    source_table: str,
+    source_id: int,
+    body: str,
+) -> dict[str, Any]:
+    if source_table not in APPLICATION_DRAFT_TABLES:
+        raise ValueError(f"Unsupported source_table: {source_table}")
+
+    exists = conn.execute(
+        f"SELECT id FROM {source_table} WHERE id = ?",
+        (source_id,),
+    ).fetchone()
+    if not exists:
+        raise ValueError(f"No {source_table} row with id {source_id}")
+
+    conn.execute(
+        """
+        INSERT INTO application_drafts (source_table, source_id, body)
+        VALUES (?, ?, ?)
+        ON CONFLICT(source_table, source_id) DO UPDATE SET
+            body = excluded.body,
+            updated_at = datetime('now')
+        """,
+        (source_table, source_id, body),
+    )
+    draft = get_application_draft(conn, source_table, source_id)
+    assert draft is not None
+    return draft
+
+
+def list_application_drafts_bulk(
+    conn: sqlite3.Connection,
+    keys: list[tuple[str, int]],
+) -> dict[tuple[str, int], str]:
+    if not keys:
+        return {}
+    wanted = set(keys)
+    rows = conn.execute(
+        "SELECT source_table, source_id, body FROM application_drafts WHERE body != ''"
+    ).fetchall()
+    result: dict[tuple[str, int], str] = {}
+    for row in rows:
+        key = (row["source_table"], int(row["source_id"]))
+        if key in wanted:
+            result[key] = row["body"]
+    return result
 
 
 def _oss_recent_clause(recent_days: int) -> tuple[str, str]:

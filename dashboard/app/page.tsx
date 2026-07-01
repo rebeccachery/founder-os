@@ -1,6 +1,7 @@
 import { StatCard } from "@/components/StatCard";
 import { DataTable } from "@/components/DataTable";
-import { StatusBadge, formatDate } from "@/components/ui";
+import { BriefingDeadlineCell } from "@/components/DeadlineEditor";
+import { StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 
 export default async function HomePage() {
@@ -65,7 +66,13 @@ export default async function HomePage() {
             {
               key: "deadline_at",
               label: "Due",
-              render: (row) => formatDate(row.deadline_at as string),
+              render: (row) => (
+                <BriefingDeadlineCell
+                  dueAt={row.deadline_at as string}
+                  sourceId={(row.source_id ?? row.id) as number}
+                  sourceTable={(row.source_table as string | null) ?? null}
+                />
+              ),
             },
             {
               key: "status",

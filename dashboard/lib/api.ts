@@ -20,7 +20,10 @@ export interface BriefingItem {
   reason: string;
   url: string | null;
   source_id: number | null;
+  source_table?: string | null;
   status: string | null;
+  has_draft?: boolean;
+  draft_preview?: string | null;
 }
 
 export interface BriefingConflict {
@@ -61,6 +64,8 @@ export interface Deadline {
   category: string;
   url: string | null;
   status: string;
+  source_id?: number;
+  source_table?: string;
 }
 
 export interface Investor {
@@ -223,6 +228,77 @@ export const api = {
     return fetchApi<SocialPost[]>(`/api/social${qs ? `?${qs}` : ""}`);
   },
 };
+
+export type DeadlineSourceTable = "scout_opportunities" | "grants" | "competitions";
+
+export async function updateDeadline(
+  sourceTable: DeadlineSourceTable,
+  id: number,
+  payload: { deadline_at?: string | null }
+): Promise<ScoutOpportunity | Grant | Competition> {
+  const path =
+    sourceTable === "scout_opportunities"
+      ? `/api/scout/${id}`
+      : `/api/${sourceTable}/${id}`;
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "PATCH",
+    headers: apiHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = typeof body.detail === "string" ? body.detail : `API error: ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+/** @deprecated Use updateDeadline instead */
+export async function updateScoutOpportunity(
+  id: number,
+  payload: { deadline_at?: string | null }
+): Promise<ScoutOpportunity> {
+  return updateDeadline("scout_opportunities", id, payload) as Promise<ScoutOpportunity>;
+}
+
+export interface ApplicationDraft {
+  source_table: string;
+  source_id: number;
+  body: string;
+  updated_at: string | null;
+}
+
+export async function getApplicationDraft(
+  sourceTable: string,
+  sourceId: number
+): Promise<ApplicationDraft> {
+  const res = await fetch(`${API_URL}/api/applications/${sourceTable}/${sourceId}/draft`, {
+    headers: { "X-API-Key": API_KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} GET draft`);
+  }
+  return res.json();
+}
+
+export async function saveApplicationDraft(
+  sourceTable: string,
+  sourceId: number,
+  body: string
+): Promise<ApplicationDraft> {
+  const res = await fetch(`${API_URL}/api/applications/${sourceTable}/${sourceId}/draft`, {
+    method: "PUT",
+    headers: apiHeaders(),
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const detail = typeof errBody.detail === "string" ? errBody.detail : `API error: ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
 
 export async function createSavedOpportunity(
   payload: SavedOpportunityInput

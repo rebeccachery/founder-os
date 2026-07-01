@@ -46,6 +46,7 @@ def collect_assistant_context(
                 "due_at": row.get("deadline_at"),
                 "url": row.get("url"),
                 "source_id": row["id"],
+                "source_table": "grants",
                 "status": row.get("status"),
                 "score_total": None,
             }
@@ -64,6 +65,7 @@ def collect_assistant_context(
                 "due_at": row.get("deadline_at"),
                 "url": row.get("url"),
                 "source_id": row["id"],
+                "source_table": "competitions",
                 "status": row.get("status"),
                 "score_total": None,
             }
@@ -83,6 +85,7 @@ def collect_assistant_context(
                 "due_at": row.get("deadline_at"),
                 "url": row.get("url"),
                 "source_id": row["id"],
+                "source_table": "scout_opportunities",
                 "status": row.get("status"),
                 "score_total": row.get("score_total"),
                 "source": row.get("source"),

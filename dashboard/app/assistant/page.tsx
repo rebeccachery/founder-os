@@ -1,4 +1,6 @@
 import { AddOpportunityForm } from "@/components/AddOpportunityForm";
+import { ApplicationDraftSection } from "@/components/ApplicationDraftSection";
+import { BriefingDeadlineCell } from "@/components/DeadlineEditor";
 import { BriefingSection } from "@/components/BriefingSection";
 import { ConflictAlert } from "@/components/ConflictAlert";
 import { DataTable } from "@/components/DataTable";
@@ -40,7 +42,13 @@ export default async function AssistantPage() {
     {
       key: "due_at",
       label: "Due",
-      render: (row: Record<string, unknown>) => formatDate(row.due_at as string),
+      render: (row: Record<string, unknown>) => (
+        <BriefingDeadlineCell
+          dueAt={row.due_at as string | null}
+          sourceId={row.source_id as number | null}
+          sourceTable={row.source_table as string | null}
+        />
+      ),
     },
     {
       key: "reason",
@@ -138,7 +146,7 @@ export default async function AssistantPage() {
           isEmpty={!briefing?.applications.length}
           emptyMessage="No open applications. Check Scout for new opportunities."
         >
-          {briefing && <DataTable rows={briefing.applications} columns={itemColumns} />}
+          {briefing && <ApplicationDraftSection items={briefing.applications} />}
         </BriefingSection>
       </div>
     </div>

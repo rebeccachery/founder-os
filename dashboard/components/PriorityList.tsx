@@ -1,4 +1,5 @@
-import { ExternalLink, formatDate } from "@/components/ui";
+import { ExternalLink } from "@/components/ui";
+import { BriefingDeadlineCell } from "@/components/DeadlineEditor";
 import type { BriefingItem } from "@/lib/api";
 
 export function PriorityList({ items }: { items: BriefingItem[] }) {
@@ -29,9 +30,14 @@ export function PriorityList({ items }: { items: BriefingItem[] }) {
               </span>
             </div>
             <p className="mt-1 text-sm text-zinc-400">{item.reason}</p>
-            {item.due_at && (
-              <p className="mt-1 text-xs text-zinc-500">Due {formatDate(item.due_at)}</p>
-            )}
+            <div className="mt-1 text-xs text-zinc-500">
+              Due{" "}
+              <BriefingDeadlineCell
+                dueAt={item.due_at}
+                sourceId={item.source_id}
+                sourceTable={item.source_table ?? null}
+              />
+            </div>
           </div>
         </li>
       ))}

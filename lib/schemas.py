@@ -305,7 +305,33 @@ class BriefingItem(BaseModel):
     reason: str = ""
     url: str | None = None
     source_id: int | None = None
+    source_table: str | None = None
     status: str | None = None
+    has_draft: bool = False
+    draft_preview: str | None = None
+
+
+class ScoutOpportunityUpdate(BaseModel):
+    deadline_at: date | None = None
+
+
+class GrantDeadlineUpdate(BaseModel):
+    deadline_at: date | None = None
+
+
+class CompetitionDeadlineUpdate(BaseModel):
+    deadline_at: date | None = None
+
+
+class ApplicationDraftUpdate(BaseModel):
+    body: str = ""
+
+
+class ApplicationDraft(BaseModel):
+    source_table: str
+    source_id: int
+    body: str
+    updated_at: str | None = None
 
 
 class Conflict(BaseModel):

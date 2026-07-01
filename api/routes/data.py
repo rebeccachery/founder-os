@@ -5,23 +5,37 @@ from pydantic import BaseModel, Field
 
 from api.database import db_session
 from api.deps import verify_api_key
-from lib.assistant.briefing import briefing_to_db_row, build_briefing
+from lib.assistant.briefing import briefing_needs_rebuild, briefing_to_db_row, build_briefing
 from lib.db import (
+    get_application_draft,
     get_briefing,
+    get_competition,
     get_deadlines,
-    get_stats,
+    get_grant,
+    get_scout_opportunity,
     get_social_post,
+    get_stats,
     list_oss_resources,
     list_scout_opportunities,
     list_social_posts,
     list_table,
     seed_demo_data,
     update_social_post_status,
+    upsert_application_draft,
     upsert_briefing,
 )
 from lib.discovery.profile import load_oss_profile
 from lib.opportunities.intake import save_opportunity
-from lib.schemas import SavedOpportunity, SavedOpportunityCreate
+from lib.opportunities.update import update_record_deadline, update_scout_deadline
+from lib.schemas import (
+    ApplicationDraft,
+    ApplicationDraftUpdate,
+    CompetitionDeadlineUpdate,
+    GrantDeadlineUpdate,
+    SavedOpportunity,
+    SavedOpportunityCreate,
+    ScoutOpportunityUpdate,
+)
 
 router = APIRouter(prefix="/api", tags=["data"])
 
@@ -119,6 +133,94 @@ def save_opportunity_route(
     )
 
 
+@router.patch("/scout/{opportunity_id}")
+def update_scout_opportunity_route(
+    opportunity_id: int,
+    payload: ScoutOpportunityUpdate,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        if not get_scout_opportunity(conn, opportunity_id):
+            raise HTTPException(status_code=404, detail="Scout opportunity not found")
+        try:
+            row = update_scout_deadline(conn, opportunity_id, payload.deadline_at)
+            briefing = build_briefing(conn)
+            upsert_briefing(conn, briefing_to_db_row(briefing))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return row
+
+
+@router.patch("/grants/{grant_id}")
+def update_grant_deadline_route(
+    grant_id: int,
+    payload: GrantDeadlineUpdate,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        if not get_grant(conn, grant_id):
+            raise HTTPException(status_code=404, detail="Grant not found")
+        row = update_record_deadline(conn, "grants", grant_id, payload.deadline_at)
+        briefing = build_briefing(conn)
+        upsert_briefing(conn, briefing_to_db_row(briefing))
+    return row
+
+
+@router.patch("/competitions/{competition_id}")
+def update_competition_deadline_route(
+    competition_id: int,
+    payload: CompetitionDeadlineUpdate,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        if not get_competition(conn, competition_id):
+            raise HTTPException(status_code=404, detail="Competition not found")
+        row = update_record_deadline(conn, "competitions", competition_id, payload.deadline_at)
+        briefing = build_briefing(conn)
+        upsert_briefing(conn, briefing_to_db_row(briefing))
+    return row
+
+
+@router.get("/applications/{source_table}/{source_id}/draft", response_model=ApplicationDraft)
+def get_application_draft_route(
+    source_table: str,
+    source_id: int,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        draft = get_application_draft(conn, source_table, source_id)
+        if not draft:
+            return ApplicationDraft(source_table=source_table, source_id=source_id, body="")
+        return ApplicationDraft(
+            source_table=draft["source_table"],
+            source_id=draft["source_id"],
+            body=draft["body"],
+            updated_at=draft.get("updated_at"),
+        )
+
+
+@router.put("/applications/{source_table}/{source_id}/draft", response_model=ApplicationDraft)
+def save_application_draft_route(
+    source_table: str,
+    source_id: int,
+    payload: ApplicationDraftUpdate,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        try:
+            draft = upsert_application_draft(conn, source_table, source_id, payload.body)
+            briefing = build_briefing(conn)
+            upsert_briefing(conn, briefing_to_db_row(briefing))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ApplicationDraft(
+        source_table=draft["source_table"],
+        source_id=draft["source_id"],
+        body=draft["body"],
+        updated_at=draft.get("updated_at"),
+    )
+
+
 @router.get("/oss")
 def get_oss(
     status: str | None = None,
@@ -160,7 +262,7 @@ def get_briefing_route(
     target = briefing_date or date.today().isoformat()
     with db_session() as conn:
         row = get_briefing(conn, target)
-        if row:
+        if row and not briefing_needs_rebuild(row):
             return row
         briefing = build_briefing(conn, date.fromisoformat(target))
         upsert_briefing(conn, briefing_to_db_row(briefing))

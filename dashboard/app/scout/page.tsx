@@ -2,8 +2,9 @@ import Link from "next/link";
 
 import { AddOpportunityForm } from "@/components/AddOpportunityForm";
 import { DataTable } from "@/components/DataTable";
+import { DeadlineEditor } from "@/components/DeadlineEditor";
 import { ScoutSourceFilter } from "@/components/ScoutSourceFilter";
-import { ExternalLink, StatusBadge, formatDate } from "@/components/ui";
+import { ExternalLink, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 
 function formatCategory(category: string) {
@@ -102,8 +103,13 @@ export default async function ScoutPage({
             {
               key: "deadline_at",
               label: "Deadline",
-              render: (row) =>
-                row.deadline_at ? formatDate(row.deadline_at as string) : "—",
+              render: (row) => (
+                <DeadlineEditor
+                  sourceTable="scout_opportunities"
+                  sourceId={row.id as number}
+                  deadlineAt={row.deadline_at as string | null}
+                />
+              ),
             },
             {
               key: "status",
