@@ -1,0 +1,58 @@
+Using the company context and ranked signals below, generate social content drafts.
+
+Return JSON with this exact shape:
+{
+  "drafts": [
+    {
+      "content_type": "twitter_thread",
+      "platform": "twitter",
+      "title": "short label",
+      "hook": "tweet 1 text (max 280 chars)",
+      "body": "full thread: one tweet per line, prefix with 1/ 2/ 3/ etc",
+      "source_refs": [{"type": "commit|release|milestone|feature|dataset", "id": "...", "title": "..."}]
+    },
+    {
+      "content_type": "linkedin_post",
+      "platform": "linkedin",
+      "title": "short label",
+      "hook": "opening line",
+      "body": "150-300 words, story arc, end with 3 hashtags",
+      "source_refs": []
+    },
+    {
+      "content_type": "demo_idea",
+      "platform": "internal",
+      "title": "demo title",
+      "hook": "one-line pitch",
+      "body": "Problem → 60-second demo script → recording tip",
+      "source_refs": []
+    },
+    {
+      "content_type": "launch_announcement",
+      "platform": "both",
+      "title": "launch headline",
+      "hook": "headline",
+      "body": "What shipped, why it matters, CTA with link",
+      "source_refs": []
+    }
+  ]
+}
+
+Rules:
+- Ground every draft in the ranked signals; cite the strongest signal in source_refs.
+- If no release exists, write launch_announcement as a "progress update" not a product launch.
+- Match the voice tone and avoid listed phrases.
+- Include the CTA URL where appropriate.
+
+Company: {company_name} ({company_stage})
+Description: {company_description}
+Voice tone: {tone}
+Hashtags to prefer: {hashtags}
+Avoid: {avoid}
+CTA URL: {cta_url}
+
+Ranked signals (highest first):
+{signals_summary}
+
+Full context summary:
+{context_summary}

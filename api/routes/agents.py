@@ -21,6 +21,7 @@ AGENT_MODULES = {
     "research": "agents.research.agent.ResearchAgent",
     "opportunities": "agents.opportunities.agent.OpportunitiesAgent",
     "oss_discovery": "agents.oss_discovery.agent.OssDiscoveryAgent",
+    "executive_assistant": "agents.executive_assistant.agent.ExecutiveAssistantAgent",
 }
 
 

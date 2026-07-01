@@ -4,9 +4,10 @@ const links = [
   { href: "/", label: "Overview" },
   { href: "/scout", label: "Scout" },
   { href: "/oss", label: "OSS" },
+  { href: "/social", label: "Social" },
   { href: "/funding", label: "Funding" },
   { href: "/investors", label: "Investors" },
-  { href: "/deadlines", label: "Deadlines" },
+  { href: "/assistant", label: "Assistant" },
   { href: "/grants", label: "Grants" },
   { href: "/competitions", label: "Competitions" },
 ];

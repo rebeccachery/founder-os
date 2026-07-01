@@ -156,6 +156,43 @@ CREATE INDEX IF NOT EXISTS idx_contacts_follow_up ON contacts(next_follow_up_at)
 CREATE INDEX IF NOT EXISTS idx_oss_score ON oss_resources(score_total DESC);
 CREATE INDEX IF NOT EXISTS idx_oss_type ON oss_resources(resource_type);
 CREATE INDEX IF NOT EXISTS idx_oss_status ON oss_resources(status);
+
+CREATE TABLE IF NOT EXISTS social_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_type TEXT NOT NULL,
+    platform TEXT,
+    title TEXT,
+    body TEXT NOT NULL,
+    hook TEXT,
+    source_refs TEXT,
+    signal_score REAL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    llm_model TEXT,
+    generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    posted_at TEXT,
+    raw_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_status ON social_posts(status);
+CREATE INDEX IF NOT EXISTS idx_social_type ON social_posts(content_type);
+CREATE INDEX IF NOT EXISTS idx_social_generated ON social_posts(generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS executive_briefings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    briefing_date TEXT NOT NULL UNIQUE,
+    generated_at TEXT NOT NULL,
+    priorities_json TEXT NOT NULL,
+    conflicts_json TEXT NOT NULL,
+    follow_ups_json TEXT NOT NULL,
+    deadlines_json TEXT NOT NULL,
+    meetings_json TEXT NOT NULL,
+    applications_json TEXT NOT NULL,
+    summary_md TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_briefing_date ON executive_briefings(briefing_date DESC);
 """
 
 
@@ -163,11 +200,20 @@ def get_db_path() -> Path:
     return Path(os.getenv("DATABASE_PATH", str(DEFAULT_DB_PATH)))
 
 
+def purge_test_rows(conn: sqlite3.Connection) -> None:
+    """Remove placeholder rows used during local development."""
+    for table in ("scout_opportunities", "oss_resources"):
+        conn.execute(
+            f"DELETE FROM {table} WHERE url LIKE '%example.com%'"
+        )
+
+
 def init_db(db_path: Path | None = None) -> None:
     path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA)
+        purge_test_rows(conn)
         conn.commit()
 
 
@@ -306,7 +352,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
 
     scout_rows = conn.execute(
         """
-        SELECT id, name AS title, deadline_at, url, status, category
+        SELECT id, name AS title, deadline_at, url, status, category, source
         FROM scout_opportunities
         WHERE deadline_at IS NOT NULL
           AND deadline_at >= ?
@@ -326,6 +372,7 @@ def get_deadlines(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, An
                 "url": row["url"],
                 "is_estimated": False,
                 "status": row["status"],
+                "source": row["source"],
             }
         )
 
@@ -379,6 +426,11 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
         ).fetchone()
         new_items += int(row["c"])
 
+    draft_row = conn.execute(
+        "SELECT COUNT(*) AS c FROM social_posts WHERE status = 'draft'"
+    ).fetchone()
+    social_drafts = int(draft_row["c"])
+
     return {
         "investors": count("investors"),
         "funding": count("funding_opportunities"),
@@ -386,6 +438,7 @@ def get_stats(conn: sqlite3.Connection) -> dict[str, int]:
         "competitions": count("competitions"),
         "scout": count("scout_opportunities"),
         "oss": count("oss_resources"),
+        "social": social_drafts,
         "deadlines_upcoming": upcoming,
         "contacts": count("contacts"),
         "new_items": new_items,
@@ -397,6 +450,7 @@ def list_scout_opportunities(
     *,
     status: str | None = None,
     category: str | None = None,
+    source: str | None = None,
     min_score: float | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
@@ -409,6 +463,14 @@ def list_scout_opportunities(
     if category:
         clauses.append("category = ?")
         params.append(category)
+    if source:
+        if source == "manual":
+            clauses.append("source IN ('manual', 'twitter')")
+        elif source == "agent":
+            clauses.append("(source IS NULL OR source NOT IN ('manual', 'twitter'))")
+        else:
+            clauses.append("source = ?")
+            params.append(source)
     if min_score is not None:
         clauses.append("score_total >= ?")
         params.append(min_score)
@@ -485,6 +547,123 @@ def list_oss_resources(
     return [_row_to_dict(r) for r in rows]
 
 
+def archive_draft_social_posts_for_date(conn: sqlite3.Connection, day: str) -> int:
+    cursor = conn.execute(
+        """
+        UPDATE social_posts
+        SET status = 'archived', updated_at = datetime('now')
+        WHERE status = 'draft' AND date(generated_at) = date(?)
+        """,
+        (day,),
+    )
+    return cursor.rowcount
+
+
+def insert_social_post(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
+    source_refs = data.get("source_refs")
+    if isinstance(source_refs, list):
+        data = {**data, "source_refs": json.dumps(source_refs)}
+    raw_json = data.get("raw_json")
+    if isinstance(raw_json, dict):
+        data = {**data, "raw_json": _serialize_json(raw_json)}
+
+    columns = [k for k in data.keys() if k != "id"]
+    placeholders = ", ".join("?" for _ in columns)
+    col_names = ", ".join(columns)
+    conn.execute(
+        f"INSERT INTO social_posts ({col_names}) VALUES ({placeholders})",
+        [data[c] for c in columns],
+    )
+    row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+    return int(row["id"])
+
+
+def list_social_posts(
+    conn: sqlite3.Connection,
+    *,
+    status: str | None = None,
+    content_type: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if content_type:
+        clauses.append("content_type = ?")
+        params.append(content_type)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+    rows = conn.execute(
+        f"""
+        SELECT * FROM social_posts
+        {where}
+        ORDER BY generated_at DESC, id DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_social_post(conn: sqlite3.Connection, post_id: int) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM social_posts WHERE id = ?", (post_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def update_social_post_status(
+    conn: sqlite3.Connection,
+    post_id: int,
+    status: str,
+    *,
+    body: str | None = None,
+    posted_at: str | None = None,
+) -> bool:
+    fields = ["status = ?", "updated_at = datetime('now')"]
+    params: list[Any] = [status]
+
+    if body is not None:
+        fields.append("body = ?")
+        params.append(body)
+    if posted_at is not None:
+        fields.append("posted_at = ?")
+        params.append(posted_at)
+    elif status == "posted":
+        fields.append("posted_at = datetime('now')")
+
+    params.append(post_id)
+    cursor = conn.execute(
+        f"UPDATE social_posts SET {', '.join(fields)} WHERE id = ?",
+        params,
+    )
+    return cursor.rowcount > 0
+
+
+def get_last_agent_run(
+    conn: sqlite3.Connection,
+    agent_name: str,
+    *,
+    status: str = "success",
+) -> datetime | None:
+    row = conn.execute(
+        """
+        SELECT started_at FROM agent_runs
+        WHERE agent_name = ? AND status = ?
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (agent_name, status),
+    ).fetchone()
+    if not row or not row["started_at"]:
+        return None
+    return datetime.fromisoformat(row["started_at"])
+
+
 def log_agent_run(
     conn: sqlite3.Connection,
     agent_name: str,
@@ -510,6 +689,91 @@ def log_agent_run(
             message,
         ),
     )
+
+
+def _briefing_section_to_json(items: list[Any]) -> str:
+    return json.dumps(items)
+
+
+def _briefing_section_from_json(raw: str) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    return json.loads(raw)
+
+
+def upsert_briefing(conn: sqlite3.Connection, briefing: dict[str, Any]) -> int:
+    conn.execute(
+        """
+        INSERT INTO executive_briefings (
+            briefing_date, generated_at,
+            priorities_json, conflicts_json, follow_ups_json,
+            deadlines_json, meetings_json, applications_json, summary_md
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(briefing_date) DO UPDATE SET
+            generated_at = excluded.generated_at,
+            priorities_json = excluded.priorities_json,
+            conflicts_json = excluded.conflicts_json,
+            follow_ups_json = excluded.follow_ups_json,
+            deadlines_json = excluded.deadlines_json,
+            meetings_json = excluded.meetings_json,
+            applications_json = excluded.applications_json,
+            summary_md = excluded.summary_md
+        """,
+        (
+            briefing["briefing_date"],
+            briefing["generated_at"],
+            _briefing_section_to_json(briefing["priorities"]),
+            _briefing_section_to_json(briefing["conflicts"]),
+            _briefing_section_to_json(briefing["follow_ups"]),
+            _briefing_section_to_json(briefing["deadlines"]),
+            _briefing_section_to_json(briefing["meetings"]),
+            _briefing_section_to_json(briefing["applications"]),
+            briefing.get("summary_md"),
+        ),
+    )
+    row = conn.execute(
+        "SELECT id FROM executive_briefings WHERE briefing_date = ?",
+        (briefing["briefing_date"],),
+    ).fetchone()
+    return int(row["id"])
+
+
+def get_briefing(conn: sqlite3.Connection, briefing_date: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM executive_briefings WHERE briefing_date = ?",
+        (briefing_date,),
+    ).fetchone()
+    if not row:
+        return None
+    return _briefing_row_to_dict(row)
+
+
+def get_latest_briefing(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT * FROM executive_briefings
+        ORDER BY briefing_date DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    return _briefing_row_to_dict(row)
+
+
+def _briefing_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "briefing_date": row["briefing_date"],
+        "generated_at": row["generated_at"],
+        "priorities": _briefing_section_from_json(row["priorities_json"]),
+        "conflicts": _briefing_section_from_json(row["conflicts_json"]),
+        "follow_ups": _briefing_section_from_json(row["follow_ups_json"]),
+        "deadlines": _briefing_section_from_json(row["deadlines_json"]),
+        "meetings": _briefing_section_from_json(row["meetings_json"]),
+        "applications": _briefing_section_from_json(row["applications_json"]),
+        "summary_md": row["summary_md"],
+    }
 
 
 def seed_demo_data(conn: sqlite3.Connection) -> None:

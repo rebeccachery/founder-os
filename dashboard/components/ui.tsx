@@ -1,6 +1,10 @@
 export function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     new: "bg-emerald-500/20 text-emerald-400",
+    draft: "bg-violet-500/20 text-violet-400",
+    approved: "bg-blue-500/20 text-blue-400",
+    posted: "bg-emerald-500/20 text-emerald-400",
+    skipped: "bg-zinc-500/20 text-zinc-400",
     reviewed: "bg-blue-500/20 text-blue-400",
     applied: "bg-amber-500/20 text-amber-400",
     passed: "bg-zinc-500/20 text-zinc-400",
