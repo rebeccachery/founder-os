@@ -4,15 +4,16 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_SOCIAL_PROFILE_PATH = ROOT / "config" / "social_profile.yaml"
-DEFAULT_FEATURES_PATH = ROOT / "config" / "features.yaml"
+from lib.paths import ROOT, resolve_config
 
-REPO_PATH_ENV_VARS = {
-    "your-product-repo": "PRODUCT_REPO_PATH",
-    "nyc_map": "NYC_MAP_PATH",
-    "your-product-demo": "DEMO_REPO_PATH",
-}
+SOCIAL_PROFILE_FILENAME = "social_profile.yaml"
+FEATURES_FILENAME = "features.yaml"
+
+REPO_PATH_ENV_VARS: dict[str, str] = {}
+
+
+def repo_path_env_var(repo_name: str) -> str:
+    return f"{repo_name.upper().replace('-', '_')}_PATH"
 
 
 class ProductRepoConfig(BaseModel):
@@ -102,7 +103,7 @@ class FeaturesConfig(BaseModel):
 
 
 def resolve_repo_local_path(repo: ProductRepoConfig) -> Path:
-    env_var = REPO_PATH_ENV_VARS.get(repo.name)
+    env_var = REPO_PATH_ENV_VARS.get(repo.name) or repo_path_env_var(repo.name)
     if env_var:
         import os
 
@@ -141,8 +142,8 @@ def _normalize_profile_data(data: dict) -> dict:
 
 
 def load_social_profile(path: Path | None = None) -> SocialProfile:
-    profile_path = path or DEFAULT_SOCIAL_PROFILE_PATH
-    if not profile_path.exists():
+    profile_path = path or resolve_config(SOCIAL_PROFILE_FILENAME)
+    if profile_path is None:
         return SocialProfile()
     with profile_path.open() as f:
         data = yaml.safe_load(f) or {}
@@ -151,8 +152,8 @@ def load_social_profile(path: Path | None = None) -> SocialProfile:
 
 
 def load_features_config(path: Path | None = None) -> FeaturesConfig:
-    features_path = path or DEFAULT_FEATURES_PATH
-    if not features_path.exists():
+    features_path = path or resolve_config(FEATURES_FILENAME)
+    if features_path is None:
         return FeaturesConfig()
     with features_path.open() as f:
         data = yaml.safe_load(f) or {}

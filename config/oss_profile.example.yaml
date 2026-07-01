@@ -1,0 +1,57 @@
+priorities:
+  task_fit: 0.30
+  language_fit: 0.30
+  recency: 0.20
+  popularity: 0.10
+  license_fit: 0.10
+
+signals:
+  task_keywords:
+    - speech recognition
+    - ASR
+    - automatic speech recognition
+    - TTS
+    - text-to-speech
+    - translation
+    - pronunciation
+    - spoken language
+    - voice
+    - NLP
+    - speech synthesis
+    - speech-to-text
+    - phoneme
+    - accent
+    - fluency
+    - WER
+    - CER
+    - BLEU
+    - evaluation
+    - benchmark
+  language_keywords:
+    - low-resource
+    - low resource
+    - underresourced
+    - under-resourced
+    - endangered language
+    - indigenous language
+    - heritage language
+    - minority language
+    - multilingual
+    - bilingual
+    - language preservation
+  target_language_codes:
+    - xx
+  target_language_names:
+    - example language
+  license_preferred:
+    - mit
+    - apache-2.0
+    - cc-by-4.0
+    - cc-by-sa-4.0
+    - cc0-1.0
+
+recency:
+  digest_recent_days: 90
+  hard_filter_days:
+    repo: 365
+    model: 365

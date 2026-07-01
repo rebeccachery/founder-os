@@ -1,6 +1,6 @@
 # Funding Scout Agent
 
-Unified morning scout across nine funding categories. Results are ranked against `config/founder_profile.yaml`.
+Unified morning scout across nine funding categories. Results are ranked against `private/config/founder_profile.yaml`.
 
 ## Categories
 
@@ -27,4 +27,4 @@ Daily scan includes this agent. Output:
 
 ## Profile
 
-Edit `config/founder_profile.yaml` to adjust stage, keywords, and ranking weights.
+Edit `private/config/founder_profile.yaml` to adjust stage, keywords, and ranking weights.

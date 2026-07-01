@@ -3,8 +3,9 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_PROFILE_PATH = ROOT / "config" / "founder_profile.yaml"
+from lib.paths import resolve_config
+
+FOUNDER_PROFILE_FILENAME = "founder_profile.yaml"
 
 
 class CompanyProfile(BaseModel):
@@ -39,8 +40,8 @@ class FounderProfile(BaseModel):
 
 
 def load_founder_profile(path: Path | None = None) -> FounderProfile:
-    profile_path = path or DEFAULT_PROFILE_PATH
-    if not profile_path.exists():
+    profile_path = path or resolve_config(FOUNDER_PROFILE_FILENAME)
+    if profile_path is None:
         return FounderProfile()
     with profile_path.open() as f:
         data = yaml.safe_load(f) or {}

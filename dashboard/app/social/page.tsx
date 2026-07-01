@@ -69,7 +69,7 @@ export default async function SocialPage({
     <div>
       <h1 className="text-2xl font-semibold text-white">Social Content</h1>
       <p className="mt-1 text-zinc-400">
-        Review Your Company drafts from your-product-repo, nyc_map, and your-product-demo.
+        Review social drafts generated from your configured product repos.
       </p>
 
       {error && (

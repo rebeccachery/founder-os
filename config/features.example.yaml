@@ -1,0 +1,12 @@
+features:
+  - name: Example product feature
+    status: beta
+    hook: Short description of what you shipped
+    repo: your-product-repo
+
+milestones:
+  - name: MVP launch
+    status: in_progress
+    target_date: 2026-12-01
+    description: Core product loop for early users
+    repo: your-product-repo

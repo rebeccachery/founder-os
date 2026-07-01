@@ -43,9 +43,16 @@ def search(
     return []
 
 
-def load_queries(path: Path) -> list[str]:
+def load_queries(path: Path, merge_path: Path | None = None) -> list[str]:
     if not path.exists():
-        return []
-    with path.open() as f:
-        data = yaml.safe_load(f) or {}
-    return data.get("queries", [])
+        queries: list[str] = []
+    else:
+        with path.open() as f:
+            data = yaml.safe_load(f) or {}
+        queries = data.get("queries", [])
+
+    if merge_path is not None and merge_path.exists():
+        with merge_path.open() as f:
+            extra = yaml.safe_load(f) or {}
+        queries.extend(extra.get("queries", []))
+    return queries

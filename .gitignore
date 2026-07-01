@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 __pycache__/
@@ -8,6 +10,16 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+
+# Private data — company profiles, notes, query overrides, drafts
+private/
+
+# Legacy config paths (real files live under private/config/)
+config/founder_profile.yaml
+config/oss_profile.yaml
+config/social_profile.yaml
+config/features.yaml
+
 storage/founder_os.db
 storage/raw/*
 !storage/raw/.gitkeep
@@ -18,4 +30,7 @@ reports/*
 dashboard/node_modules/
 dashboard/.next/
 dashboard/out/
+dashboard/.env.local
+dashboard/.env.local.*
+!dashboard/.env.local.example
 .DS_Store

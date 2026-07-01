@@ -101,7 +101,7 @@ def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
             repo = f"**[{feature.repo}]** " if feature.repo else ""
             lines.append(f"- {repo}**{feature.name}** ({feature.status}){hook}\n")
     else:
-        lines.append("_No features in config/features.yaml._\n")
+        lines.append("_No features in private/config/features.yaml._\n")
     lines.append("\n")
 
     lines.append("## Datasets & OSS\n\n")

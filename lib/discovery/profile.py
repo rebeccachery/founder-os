@@ -3,8 +3,9 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_PROFILE_PATH = ROOT / "config" / "oss_profile.yaml"
+from lib.paths import resolve_config
+
+OSS_PROFILE_FILENAME = "oss_profile.yaml"
 
 EVERGREEN_RESOURCE_TYPES = frozenset({"benchmark", "eval_tool"})
 
@@ -39,8 +40,8 @@ class OssProfile(BaseModel):
 
 
 def load_oss_profile(path: Path | None = None) -> OssProfile:
-    profile_path = path or DEFAULT_PROFILE_PATH
-    if not profile_path.exists():
+    profile_path = path or resolve_config(OSS_PROFILE_FILENAME)
+    if profile_path is None:
         return OssProfile()
     with profile_path.open() as f:
         data = yaml.safe_load(f) or {}

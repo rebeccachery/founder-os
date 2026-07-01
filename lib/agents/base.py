@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 
 from lib.db import log_agent_run
+from lib.paths import private_agent_queries_path
 from lib.schemas import AgentResult, SearchResult
 from lib.scout.queries import load_categorized_queries
 from lib.search.client import load_queries, search
@@ -19,7 +20,10 @@ class BaseAgent(ABC):
         self.agent_dir = agent_dir
 
     def get_queries(self) -> list[str]:
-        return load_queries(self.agent_dir / self.queries_file)
+        return load_queries(
+            self.agent_dir / self.queries_file,
+            merge_path=private_agent_queries_path(self.agent_dir),
+        )
 
     def run_searches(self, max_results: int = 5) -> list[SearchResult]:
         all_results: list[SearchResult] = []
@@ -32,7 +36,10 @@ class BaseAgent(ABC):
         return all_results
 
     def run_categorized_searches(self, max_results: int = 5) -> list[SearchResult]:
-        categorized = load_categorized_queries(self.agent_dir / self.queries_file)
+        categorized = load_categorized_queries(
+            self.agent_dir / self.queries_file,
+            merge_path=private_agent_queries_path(self.agent_dir),
+        )
         if not categorized:
             return self.run_searches(max_results=max_results)
 

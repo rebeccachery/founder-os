@@ -30,7 +30,7 @@ Browse results in the dashboard at `/oss` (Recent · Reference · All tabs).
 ## Configuration
 
 - **Queries:** `agents/oss_discovery/queries.yaml` — Haitian Creole search terms
-- **Ranking profile:** `config/oss_profile.yaml` — target languages (`ht`, `hat`), keywords, recency rules
+- **Ranking profile:** `private/config/oss_profile.yaml` — target languages, keywords, recency rules
 - **Env vars:** `GITHUB_TOKEN`, `HF_TOKEN` (optional, improves rate limits), `OSS_DISCOVERY_MAX_PER_QUERY`
 
 ## Recency (hybrid)

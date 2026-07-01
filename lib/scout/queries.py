@@ -15,7 +15,7 @@ SCOUT_CATEGORIES = (
 )
 
 
-def load_categorized_queries(path: Path) -> dict[str, list[str]]:
+def _load_categories_from_file(path: Path) -> dict[str, list[str]]:
     if not path.exists():
         return {}
     with path.open() as f:
@@ -26,3 +26,14 @@ def load_categorized_queries(path: Path) -> dict[str, list[str]]:
         for category, queries in categories.items()
         if isinstance(queries, list)
     }
+
+
+def load_categorized_queries(
+    path: Path,
+    merge_path: Path | None = None,
+) -> dict[str, list[str]]:
+    merged = _load_categories_from_file(path)
+    if merge_path is not None:
+        for category, queries in _load_categories_from_file(merge_path).items():
+            merged.setdefault(category, []).extend(queries)
+    return merged

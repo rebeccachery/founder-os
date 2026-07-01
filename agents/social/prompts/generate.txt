@@ -40,9 +40,9 @@ Return JSON with this exact shape:
 
 Rules:
 - Ground every draft in the ranked signals; cite the strongest signal in source_refs (include "repo" when present).
-- LinkedIn post: prefer signals from your-product-repo (primary product).
-- Twitter thread: prefer nyc_map impact/data story OR primary product win.
-- Demo idea: prefer your-product-demo or a user-facing primary product change.
+- LinkedIn post: prefer signals from the primary product repo.
+- Twitter thread: prefer showcase repo impact/data story OR primary product win.
+- Demo idea: prefer a demo/showcase repo or a user-facing primary product change.
 - Launch announcement: only if a primary-repo release exists; otherwise write a progress update.
 - Match the voice tone and avoid listed phrases.
 - Include the CTA URL where appropriate. Demo video coming soon to the landing page is OK to mention briefly.

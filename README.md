@@ -7,8 +7,8 @@ An internal operating system for solo founders. AI agents continuously discover 
 ```mermaid
 flowchart LR
   subgraph config [Config]
-    Profile[founder_profile.yaml]
-    OssProfile[oss_profile.yaml]
+    Profile[private/config/founder_profile.yaml]
+    OssProfile[private/config/oss_profile.yaml]
     Queries[agents/*/queries.yaml]
     Env[.env API keys]
   end
@@ -47,11 +47,12 @@ flowchart LR
 
 ```
 founder-os/
-├── config/          # founder_profile.yaml, oss_profile.yaml
+├── config/          # Sample configs (*.example.yaml) — safe to publish
+├── private/         # Your real profiles, notes, query overrides (gitignored)
 ├── agents/          # Domain agents (funding, investors, grants, …)
 ├── workflows/       # CLI runner + GitHub Actions
-├── storage/         # SQLite database + raw exports
-├── reports/         # Generated markdown digests
+├── storage/         # SQLite database + raw exports (gitignored)
+├── reports/         # Generated markdown digests (gitignored)
 ├── dashboard/       # Next.js UI
 ├── api/             # FastAPI backend
 └── lib/             # Shared DB, search, schemas
@@ -60,6 +61,21 @@ founder-os/
 ## Quick start
 
 From the repo root:
+
+### 0. Private setup (required for real company data)
+
+Real profiles and sensitive data live under `private/`, which is gitignored. Sample configs in `config/*.example.yaml` are safe to commit and share.
+
+```bash
+mkdir -p private/config private/notes private/applications
+cp config/founder_profile.example.yaml private/config/founder_profile.yaml
+cp config/oss_profile.example.yaml      private/config/oss_profile.yaml
+cp config/social_profile.example.yaml   private/config/social_profile.yaml
+cp config/features.example.yaml         private/config/features.yaml
+# Edit private/config/* with your company details
+```
+
+Optional: add company-specific search queries under `private/agents/{agent}/queries.yaml` (merged with public `agents/*/queries.yaml`).
 
 ### 1. Backend
 
@@ -131,6 +147,7 @@ Copy [.env.example](.env.example) to `.env`:
 
 | Variable | Purpose |
 |----------|---------|
+| `FOUNDER_OS_PRIVATE_DIR` | Private data root (default `private/`) |
 | `DATABASE_PATH` | SQLite location (default `storage/founder_os.db`) |
 | `API_KEY` | Protects `/api/*` routes |
 | `CORS_ORIGINS` | Dashboard origin(s) |
@@ -142,7 +159,7 @@ Copy [.env.example](.env.example) to `.env`:
 
 ### Founder profile
 
-Edit [config/founder_profile.yaml](config/founder_profile.yaml) to personalize Funding Scout scores:
+Edit `private/config/founder_profile.yaml` (copy from [config/founder_profile.example.yaml](config/founder_profile.example.yaml)) to personalize Funding Scout scores:
 
 - Company stage, geography, and description
 - Ranking weights under `priorities` (stage fit, AI focus, education, etc.)
@@ -150,7 +167,7 @@ Edit [config/founder_profile.yaml](config/founder_profile.yaml) to personalize F
 
 ### OSS profile
 
-Edit [config/oss_profile.yaml](config/oss_profile.yaml) to personalize OSS Discovery scores:
+Edit `private/config/oss_profile.yaml` (copy from [config/oss_profile.example.yaml](config/oss_profile.example.yaml)) to personalize OSS Discovery scores:
 
 - Target languages and keywords (e.g. Haitian Creole: `ht`, `hat`)
 - Ranking weights and recency rules
@@ -228,12 +245,26 @@ Workflows:
 
 Note: the Manual Agent Run workflow does not yet list `funding_scout` or `oss_discovery` as choices — use the CLI or extend [.github/workflows/manual_run.yml](.github/workflows/manual_run.yml) if needed.
 
+## Public vs private
+
+| Public (committed) | Private (gitignored) |
+|--------------------|----------------------|
+| Agent code, API, dashboard, docs | `private/config/*.yaml` — real company profiles |
+| `config/*.example.yaml` sample configs | `private/notes/` — meeting notes |
+| Generic `agents/*/queries.yaml` | `private/applications/` — draft applications |
+| `.env.example` | `private/agents/*/queries.yaml` — query overrides |
+| | `.env`, `storage/`, `reports/` — keys and runtime data |
+
+Config resolution order: `private/config/{file}` → `config/{file}` → `config/{file}.example.yaml`.
+
+If you open-source this repo, scrub sensitive files from git history before publishing (`.gitignore` only prevents future commits).
+
 ## Customization
 
-1. Edit [config/founder_profile.yaml](config/founder_profile.yaml) for your stage and thesis
-2. Edit [config/oss_profile.yaml](config/oss_profile.yaml) for target languages and OSS keywords
-3. Tune search queries in `agents/*/queries.yaml`
+1. Copy and edit `private/config/founder_profile.yaml` for your stage and thesis
+2. Copy and edit `private/config/oss_profile.yaml` for target languages and OSS keywords
+3. Tune search queries in `agents/*/queries.yaml` (add overrides in `private/agents/*/queries.yaml`)
 4. Run `python workflows/run_agent.py --agent funding_scout` and review `/scout`
 5. Run `python workflows/run_agent.py --agent oss_discovery` and review `/oss`
 6. Set `SEED_DEMO_DATA=false` once live data is flowing
-7. Push to a private repo and configure Actions secrets for scheduled scans
+7. Configure GitHub Actions secrets for scheduled scans (profiles must be available on the runner — use a private repo or inject config via secrets)

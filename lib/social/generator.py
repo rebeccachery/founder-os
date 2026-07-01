@@ -4,7 +4,7 @@ from pathlib import Path
 from lib.llm.client import LlmError, chat_json, is_llm_available
 from lib.schemas import RankedSignal, SocialContext, SocialDraft, SocialGenerationResult
 from lib.scout.profile import load_founder_profile
-from lib.social.profile import load_social_profile
+from lib.social.profile import load_social_profile, primary_repo
 from lib.social.ranker import rank_signals, signal_for_repo
 from lib.social.summary import format_ranked_signals, summarize_context
 
@@ -41,7 +41,14 @@ def _weekly_summary(context: SocialContext) -> str:
         shipped = [f.name for f in context.features if f.status == "shipped"]
         if shipped:
             lines.append(f"shipped: {', '.join(shipped[:2])}")
-    return ", ".join(lines) if lines else "steady progress on Your Company"
+    return ", ".join(lines) if lines else f"steady progress on {context.company_name or 'the product'}"
+
+
+def _repo_by_role(profile, role: str) -> str | None:
+    for repo in profile.repos:
+        if repo.role == role:
+            return repo.name
+    return None
 
 
 def _template_drafts(
@@ -49,12 +56,24 @@ def _template_drafts(
     signals: list[RankedSignal],
     profile,
 ) -> list[SocialDraft]:
-    primary = signal_for_repo(signals, "your-product-repo") or _top_signal(signals)
-    map_signal = signal_for_repo(signals, "nyc_map") or primary
-    demo_signal = signal_for_repo(signals, "your-product-demo") or primary
+    primary_repo_name = (primary_repo(profile) or profile.repos[0]).name if profile.repos else None
+    showcase_repo_name = _repo_by_role(profile, "showcase")
+    demo_repo_name = _repo_by_role(profile, "showcase") if not primary_repo_name else None
+    for repo in profile.repos:
+        if repo.name != primary_repo_name and repo.role != "primary":
+            if demo_repo_name is None or repo.name != showcase_repo_name:
+                demo_repo_name = repo.name
+            if showcase_repo_name is None:
+                showcase_repo_name = repo.name
+
+    primary = signal_for_repo(signals, primary_repo_name) if primary_repo_name else _top_signal(signals)
+    showcase_signal = (
+        signal_for_repo(signals, showcase_repo_name) if showcase_repo_name else primary
+    )
+    demo_signal = signal_for_repo(signals, demo_repo_name) if demo_repo_name else primary
 
     company = profile.voice.company_name or context.company_name or "Your Company"
-    cta = profile.voice.cta_url or "https://example.com/"
+    cta = profile.voice.cta_url or "https://example.com"
     hashtags = " ".join(f"#{tag}" for tag in profile.voice.hashtags[:3])
     weekly_summary = _weekly_summary(context)
 
@@ -62,31 +81,30 @@ def _template_drafts(
         SocialDraft(
             content_type="twitter_thread",
             platform="twitter",
-            title=f"NYC map update: {(map_signal.title if map_signal else company)[:40]}",
-            hook=f"Mapping Haitian community strength and education gaps in NYC.",
+            title=f"Product update: {(showcase_signal.title if showcase_signal else company)[:40]}",
+            hook="A quick product update from the team.",
             body="\n".join(
                 [
-                    f"1/ We're building {company} for underresourced languages — and mapping where support is needed most.",
-                    f"2/ This week on nyc_map: {(map_signal.title if map_signal else 'map improvements')}. {map_signal.summary[:180] if map_signal else ''}",
+                    f"1/ We're building {company} for underresourced languages.",
+                    f"2/ This week on {showcase_repo_name or 'a showcase repo'}: {(showcase_signal.title if showcase_signal else 'recent improvements')}. {showcase_signal.summary[:180] if showcase_signal else ''}",
                     f"3/ Why it matters: language learning tools should meet communities where they are.",
-                    f"4/ Explore Your Company: {cta}",
+                    f"4/ Learn more: {cta}",
                 ]
             ),
-            source_refs=_source_refs(map_signal),
-            signal_score=map_signal.score if map_signal else None,
+            source_refs=_source_refs(showcase_signal),
+            signal_score=showcase_signal.score if showcase_signal else None,
         ),
         SocialDraft(
             content_type="linkedin_post",
             platform="linkedin",
-            title=f"Your Company weekly — {(primary.title if primary else company)[:40]}",
+            title=f"{company} weekly — {(primary.title if primary else company)[:40]}",
             hook=f"A quick update from {company}.",
             body=(
                 f"A quick update from {company}.\n\n"
                 f"This period: {weekly_summary}.\n\n"
                 f"Product focus: {(primary.title if primary else 'platform work')}. "
                 f"{primary.summary[:240] if primary else ''}\n\n"
-                f"We're building pronunciation and translation feedback for underresourced languages — "
-                f"starting with Haitian Creole.\n\n"
+                f"We're building pronunciation and translation feedback for underresourced languages.\n\n"
                 f"Learn more: {cta}\n\n{hashtags}"
             ),
             source_refs=_source_refs(primary),
@@ -95,14 +113,14 @@ def _template_drafts(
         SocialDraft(
             content_type="demo_idea",
             platform="internal",
-            title=f"60s demo: {(demo_signal.title if demo_signal else 'Your Company prototype')[:40]}",
+            title=f"60s demo: {(demo_signal.title if demo_signal else f'{company} prototype')[:40]}",
             hook="Record a short walkthrough for the landing page demo slot.",
             body=(
-                f"**Problem:** Prospects need to see Your Company, not read about it.\n\n"
+                f"**Problem:** Prospects need to see {company}, not read about it.\n\n"
                 f"**Demo script (60s):**\n"
-                f"1. Open your-product-demo or landing page ({cta}) (5s)\n"
+                f"1. Open {demo_repo_name or 'demo repo'} or landing page ({cta}) (5s)\n"
                 f"2. Show: {(demo_signal.title if demo_signal else 'speaking feedback prototype')} (25s)\n"
-                f"3. One sentence on Haitian Creole / underresourced languages (15s)\n"
+                f"3. One sentence on underresourced languages (15s)\n"
                 f"4. CTA: demo video coming soon — join the waitlist at {cta} (15s)\n\n"
                 f"**Tip:** Face cam + screen; conversational, not scripted."
             ),
@@ -112,7 +130,7 @@ def _template_drafts(
         SocialDraft(
             content_type="launch_announcement",
             platform="both",
-            title=f"Your Company progress — {(primary.title if primary else company)[:40]}",
+            title=f"{company} progress — {(primary.title if primary else company)[:40]}",
             hook=f"{company} — progress update",
             body=(
                 f"**{company} — progress update**\n\n"
@@ -147,7 +165,7 @@ def _llm_drafts(
         tone=profile.voice.tone,
         hashtags=", ".join(profile.voice.hashtags),
         avoid=", ".join(profile.voice.avoid),
-        cta_url=profile.voice.cta_url or "https://example.com/",
+        cta_url=profile.voice.cta_url or "https://example.com",
         signals_summary=format_ranked_signals(signals),
         context_summary=summarize_context(context),
     )

@@ -12,6 +12,7 @@ from lib.discovery.normalize import DiscoveryHit, dedupe_hits
 from lib.discovery.profile import EVERGREEN_RESOURCE_TYPES, load_oss_profile
 from lib.discovery.ranker import rank_oss_resource
 from lib.discovery.recency import is_recent, should_ingest
+from lib.paths import private_agent_queries_path
 from lib.schemas import AgentResult
 from lib.scout.queries import load_categorized_queries
 
@@ -35,7 +36,10 @@ class OssDiscoveryAgent(BaseAgent):
         return int(os.getenv("OSS_DISCOVERY_MAX_PER_QUERY", "10"))
 
     def discover(self) -> list[DiscoveryHit]:
-        categorized = load_categorized_queries(self.agent_dir / self.queries_file)
+        categorized = load_categorized_queries(
+            self.agent_dir / self.queries_file,
+            merge_path=private_agent_queries_path(self.agent_dir),
+        )
         max_results = self._max_results()
         all_hits: list[DiscoveryHit] = []
 

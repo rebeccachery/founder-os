@@ -1,0 +1,54 @@
+since_days: 7
+
+exclude_repos:
+  - founder-os
+
+repos:
+  - owner: your-github-username
+    name: your-product-repo
+    role: primary
+    weight: 1.0
+    local_path: ../your-product-repo
+    private: false
+    commit_detail: subject_only
+    fetch_commits: true
+    fetch_releases: true
+    fetch_milestones: true
+
+github:
+  prefer_local_git: true
+
+datasets:
+  resource_types:
+    - dataset
+    - model
+  min_score: 5.0
+  recent_days: 90
+  limit: 10
+
+generation:
+  min_signal_score: 6.0
+  max_signals: 5
+  content_types:
+    - twitter_thread
+    - linkedin_post
+    - demo_idea
+    - launch_announcement
+
+voice:
+  company_name: Your Company
+  tone: founder-led, technical but accessible
+  hashtags:
+    - BuildInPublic
+    - Startup
+  avoid:
+    - revolutionary
+    - game-changer
+    - engagement bait
+  cta_url: https://example.com
+
+llm:
+  provider: ollama
+  model: qwen2.5:7b
+  base_url: http://localhost:11434/v1
+  temperature: 0.7

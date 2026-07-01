@@ -1,0 +1,84 @@
+company:
+  name: "Acme EdTech"
+  stage: pre-seed
+  description: >
+    Example EdTech startup building learning tools for underresourced languages.
+    Copy to private/config/founder_profile.yaml and customize.
+  geography:
+    - San Francisco
+    - California
+    - US
+
+priorities:
+  stage_fit: 0.25
+  ai_focus: 0.20
+  education_focus: 0.20
+  language_preservation: 0.15
+  minority_founder: 0.10
+  deadlines: 0.10
+
+signals:
+  ai_keywords:
+    - AI
+    - artificial intelligence
+    - machine learning
+    - ML
+    - LLM
+    - NLP
+    - speech recognition
+    - speech technology
+    - voice AI
+    - generative AI
+  education_keywords:
+    - EdTech
+    - education
+    - learning
+    - students
+    - classroom
+    - curriculum
+    - teacher
+    - literacy
+    - language learning
+    - pronunciation
+    - speaking practice
+    - translation
+    - multilingual
+    - bilingual
+  language_preservation_keywords:
+    - underresourced language
+    - low-resource language
+    - endangered language
+    - indigenous language
+    - heritage language
+    - minority language
+    - language preservation
+    - linguistic diversity
+    - revitalization
+    - oral tradition
+    - dialect
+  minority_founder_keywords:
+    - minority founder
+    - underrepresented founder
+    - BIPOC
+    - women founders
+    - diverse founders
+    - first-generation
+    - immigrant founder
+    - LGBTQ founder
+  stage_keywords:
+    pre-seed:
+      - pre-seed
+      - preseed
+      - idea stage
+      - early stage
+      - 0 to 1
+      - accelerator
+      - fellowship
+      - incubator
+    seed:
+      - seed
+      - seed stage
+  location_keywords:
+    - san francisco
+    - bay area
+    - california
