@@ -78,6 +78,8 @@ export interface Investor {
   status: string;
 }
 
+export type ScoutFreshness = "recurring" | "expired" | "expiring_soon" | "active" | "unknown";
+
 export interface ScoutOpportunity {
   id: number;
   name: string;
@@ -88,6 +90,8 @@ export interface ScoutOpportunity {
   description: string | null;
   url: string | null;
   deadline_at: string | null;
+  is_recurring: boolean;
+  freshness: ScoutFreshness;
   status: string;
   source: string | null;
   score_total: number | null;
@@ -169,11 +173,13 @@ export const api = {
     minScore?: number;
     source?: "manual" | "agent";
     excludeTracked?: boolean;
+    includeExpired?: boolean;
   }) => {
     const params = new URLSearchParams();
     if (opts?.minScore != null) params.set("min_score", String(opts.minScore));
     if (opts?.source) params.set("source", opts.source);
     if (opts?.excludeTracked) params.set("exclude_tracked", "true");
+    if (opts?.includeExpired) params.set("include_expired", "true");
     const qs = params.toString();
     return fetchApi<ScoutOpportunity[]>(`/api/scout${qs ? `?${qs}` : ""}`);
   },
@@ -209,6 +215,23 @@ export async function updateScoutDeadline(
     method: "PATCH",
     headers: apiHeaders(),
     body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = typeof body.detail === "string" ? body.detail : `API error: ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function updateScoutRecurring(
+  id: number,
+  isRecurring: boolean
+): Promise<ScoutOpportunity> {
+  const res = await fetch(`${API_URL}/api/scout/${id}/recurring`, {
+    method: "PUT",
+    headers: apiHeaders(),
+    body: JSON.stringify({ is_recurring: isRecurring }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

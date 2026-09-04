@@ -42,6 +42,7 @@ class ScoutOpportunity(BaseModel):
     description: str | None = None
     url: str | None = None
     deadline_at: date | None = None
+    is_recurring: bool = False
     status: ItemStatus = ItemStatus.NEW
     source: str | None = None
     score_total: float | None = None
@@ -52,6 +53,7 @@ class ScoutOpportunity(BaseModel):
     score_minority_founder: float | None = None
     score_deadline: float | None = None
     rank_reason: str | None = None
+    freshness: str | None = None
     raw_json: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -285,6 +287,10 @@ class AssistantTrack(BaseModel):
 
 class ScoutOpportunityUpdate(BaseModel):
     deadline_at: date | None = None
+
+
+class ScoutRecurringUpdate(BaseModel):
+    is_recurring: bool
 
 
 class ApplicationDraftUpdate(BaseModel):

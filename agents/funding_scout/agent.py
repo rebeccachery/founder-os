@@ -2,7 +2,8 @@ from datetime import datetime
 from pathlib import Path
 
 from lib.agents.base import BaseAgent
-from lib.db import upsert_by_url
+from lib.db import find_likely_duplicate_scout_opportunity, upsert_by_url
+from lib.opportunities.intake import is_social_url, normalize_url
 from lib.schemas import AgentResult, SearchResult
 from lib.scout.profile import load_founder_profile
 from lib.scout.ranker import parse_deadline_from_text, rank_opportunity
@@ -20,9 +21,25 @@ class FundingScoutAgent(BaseAgent):
     def process_results(self, results: list[SearchResult]) -> AgentResult:
         profile = load_founder_profile()
         upserted = 0
+        skipped = 0
         ranked_rows: list[tuple[float, dict]] = []
 
         for result in results:
+            # Reject social-feed URLs (a post/reel is never an application page)
+            # and anything that isn't a well-formed absolute URL (search
+            # providers sometimes return internal redirect-wrapper artifacts).
+            if not result.url:
+                skipped += 1
+                continue
+            try:
+                url = normalize_url(result.url)
+            except ValueError:
+                skipped += 1
+                continue
+            if is_social_url(url):
+                skipped += 1
+                continue
+
             category = result.category or "unknown"
             snippet = result.snippet or ""
             deadline_at = parse_deadline_from_text(f"{result.title} {snippet}")
@@ -33,14 +50,23 @@ class FundingScoutAgent(BaseAgent):
                 deadline_at=deadline_at,
                 profile=profile,
             )
+            name = result.title[:200]
+
+            raw_json = dict(result.raw)
+            duplicate_of = find_likely_duplicate_scout_opportunity(
+                self.conn, name=name, category=category, exclude_url=url
+            )
+            if duplicate_of is not None:
+                raw_json["likely_duplicate_of"] = duplicate_of
+
             row = {
-                "name": result.title[:200],
+                "name": name,
                 "category": category,
                 "organization": None,
                 "amount": None,
                 "stage": profile.company.stage,
                 "description": snippet[:500] if snippet else None,
-                "url": result.url,
+                "url": url,
                 "deadline_at": deadline_at.isoformat() if deadline_at else None,
                 "status": "new",
                 "source": result.source,
@@ -52,7 +78,7 @@ class FundingScoutAgent(BaseAgent):
                 "score_minority_founder": ranked.scores.minority_founder,
                 "score_deadline": ranked.scores.deadline,
                 "rank_reason": ranked.rank_reason,
-                "raw_json": result.raw,
+                "raw_json": raw_json,
             }
             upsert_by_url(self.conn, "scout_opportunities", row)
             upserted += 1
@@ -61,11 +87,15 @@ class FundingScoutAgent(BaseAgent):
         digest_path = self._write_digest(ranked_rows)
         top_score = ranked_rows[0][0] if ranked_rows else 0
 
+        message = f"Scout complete — top score {top_score:.1f}. Digest: {digest_path.name}"
+        if skipped:
+            message += f" ({skipped} low-quality results skipped: social links / malformed URLs)"
+
         return AgentResult(
             agent_name=self.name,
             items_found=len(results),
             items_upserted=upserted,
-            message=f"Scout complete — top score {top_score:.1f}. Digest: {digest_path.name}",
+            message=message,
         )
 
     def _write_digest(self, ranked_rows: list[tuple[float, dict]]) -> Path:

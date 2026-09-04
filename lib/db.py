@@ -1,10 +1,14 @@
+import difflib
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Generator
+
+from lib.scout.freshness import compute_freshness
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = ROOT / "storage" / "founder_os.db"
@@ -34,6 +38,7 @@ CREATE TABLE IF NOT EXISTS scout_opportunities (
     description TEXT,
     url TEXT UNIQUE,
     deadline_at TEXT,
+    is_recurring INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'new',
     source TEXT,
     score_total REAL,
@@ -184,7 +189,7 @@ def get_db_path() -> Path:
 
 def purge_test_rows(conn: sqlite3.Connection) -> None:
     """Remove placeholder rows used during local development."""
-    for table in ("scout_opportunities", "oss_resources"):
+    for table in ("investors", "scout_opportunities", "oss_resources"):
         conn.execute(
             f"DELETE FROM {table} WHERE url LIKE '%example.com%'"
         )
@@ -199,11 +204,30 @@ def drop_legacy_opportunity_tables(conn: sqlite3.Connection) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """Add a column to an existing table if it predates that column. Idempotent."""
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create tables/indexes if missing. Cheap and safe to call on every connection."""
+    conn.executescript(SCHEMA)
+    _ensure_column(conn, "scout_opportunities", "is_recurring", "is_recurring INTEGER NOT NULL DEFAULT 0")
+
+
 def init_db(db_path: Path | None = None) -> None:
+    """One-time setup: create schema, drop legacy tables, purge known test rows.
+
+    Call once per process start (API startup, CLI entrypoint) — not per connection.
+    Connections opened via get_connection() only ensure the schema exists; they no
+    longer re-run the legacy-table drop or test-row purge on every request.
+    """
     path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
-        conn.executescript(SCHEMA)
+        ensure_schema(conn)
         drop_legacy_opportunity_tables(conn)
         purge_test_rows(conn)
         conn.commit()
@@ -212,9 +236,10 @@ def init_db(db_path: Path | None = None) -> None:
 @contextmanager
 def get_connection(db_path: Path | None = None) -> Generator[sqlite3.Connection, None, None]:
     path = db_path or get_db_path()
-    init_db(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    ensure_schema(conn)
     try:
         yield conn
         conn.commit()
@@ -275,7 +300,12 @@ def upsert_by_url(
     columns = [k for k in data.keys() if k != "id"]
     placeholders = ", ".join("?" for _ in columns)
     col_names = ", ".join(columns)
-    updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("created_at",))
+    # `status` is a user-owned triage field once a row exists — a rescan that
+    # rediscovers the same URL should refresh score/description/etc. but must
+    # not silently undo a manual "reviewed"/"passed"/"archived" back to "new".
+    updates = ", ".join(
+        f"{c}=excluded.{c}" for c in columns if c not in ("created_at", "status")
+    )
     updates += ", updated_at=datetime('now')"
 
     sql = f"""
@@ -407,8 +437,16 @@ def list_scout_opportunities(
     source: str | None = None,
     min_score: float | None = None,
     exclude_tracked: bool = False,
+    exclude_expired: bool = False,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    """List scout opportunities.
+
+    `exclude_expired` defaults to False so existing callers (e.g. the
+    executive-assistant briefing, which already applies its own grace-period
+    logic) see the same rows as before. The dashboard's /api/scout route is
+    the one caller that opts in, hiding known-expired rows by default.
+    """
     clauses: list[str] = []
     params: list[Any] = []
 
@@ -438,6 +476,10 @@ def list_scout_opportunities(
             )
             """
         )
+    if exclude_expired:
+        clauses.append(
+            "(is_recurring = 1 OR deadline_at IS NULL OR date(deadline_at) >= date('now'))"
+        )
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
@@ -450,7 +492,16 @@ def list_scout_opportunities(
         """,
         params,
     ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_attach_freshness(_row_to_dict(r)) for r in rows]
+
+
+def _attach_freshness(row: dict[str, Any]) -> dict[str, Any]:
+    is_recurring = bool(row.get("is_recurring"))
+    return {
+        **row,
+        "is_recurring": is_recurring,
+        "freshness": compute_freshness(row.get("deadline_at"), is_recurring),
+    }
 
 
 ASSISTANT_TRACK_TABLE = "scout_opportunities"
@@ -616,6 +667,78 @@ def get_scout_opportunity(conn: sqlite3.Connection, opportunity_id: int) -> dict
     if not row:
         return None
     return _row_to_dict(row)
+
+
+def set_scout_recurring(
+    conn: sqlite3.Connection,
+    opportunity_id: int,
+    is_recurring: bool,
+) -> dict[str, Any] | None:
+    """Flag a program as evergreen/rolling — independent of deadline_at, so
+    toggling it never touches (or clears) a stored deadline."""
+    cursor = conn.execute(
+        """
+        UPDATE scout_opportunities
+        SET is_recurring = ?, updated_at = datetime('now')
+        WHERE id = ?
+        """,
+        (int(is_recurring), opportunity_id),
+    )
+    if cursor.rowcount == 0:
+        return None
+    return _attach_freshness(get_scout_opportunity(conn, opportunity_id) or {})
+
+
+def find_likely_duplicate_scout_opportunity(
+    conn: sqlite3.Connection,
+    *,
+    name: str,
+    category: str,
+    exclude_url: str | None = None,
+) -> int | None:
+    """Best-effort detection of the same program listed under a different URL
+    (e.g. the org's own page vs. a third-party grant-aggregator mirror, or a
+    search-engine redirect-wrapper URL for a page already stored cleanly).
+
+    Deliberately conservative: flags for review rather than merging/deleting,
+    since a wrong auto-merge would silently discard a real, distinct
+    opportunity. Matching requires the same category plus a high textual
+    similarity on normalized name — good enough to catch near-identical
+    titles without confusing two different programs that merely share a
+    category and a few common words.
+    """
+    def _normalize(text: str) -> str:
+        text = re.sub(r"[^a-z0-9\s]", " ", text.lower())
+        return re.sub(r"\s+", " ", text).strip()
+
+    target = _normalize(name)
+    if not target:
+        return None
+
+    rows = conn.execute(
+        "SELECT id, name, url FROM scout_opportunities WHERE category = ?",
+        (category,),
+    ).fetchall()
+
+    best_id: int | None = None
+    best_ratio = 0.0
+    for row in rows:
+        if exclude_url and row["url"] == exclude_url:
+            continue
+        candidate = _normalize(row["name"])
+        if not candidate:
+            continue
+        ratio = difflib.SequenceMatcher(None, target, candidate).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_id = int(row["id"])
+
+    # Calibrated against the live table: genuine duplicates (same page found via
+    # different search queries/providers, or an official page vs. a third-party
+    # mirror of it) cluster at 0.89+ similarity; distinct listicle-style titles
+    # that merely share generic wording ("Top 26 ... Startups" vs "Top 38 ...
+    # startups") sit around 0.82 and below. 0.85 sits in the gap between them.
+    return best_id if best_ratio >= 0.85 else None
 
 
 APPLICATION_DRAFT_TABLE = "scout_opportunities"
@@ -980,10 +1103,16 @@ def _briefing_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def seed_demo_data(conn: sqlite3.Connection) -> None:
-    """Insert sample rows so the dashboard is usable before agents run."""
-    existing = conn.execute("SELECT COUNT(*) AS c FROM investors").fetchone()
-    if int(existing["c"]) > 0:
-        return
+    """Insert sample rows so the dashboard is usable before agents run.
+
+    Only seeds a genuinely fresh install — skipped once any real agent data
+    exists anywhere, so demo rows can't linger in investors (or reappear
+    there) once you're using the system for real.
+    """
+    for table in ("investors", "scout_opportunities", "oss_resources"):
+        existing = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
+        if int(existing["c"]) > 0:
+            return
 
     demo_investors = [
         {

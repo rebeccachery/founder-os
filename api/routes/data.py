@@ -21,6 +21,7 @@ from lib.db import (
     list_scout_opportunities,
     list_social_posts,
     list_table,
+    set_scout_recurring,
     update_social_post_status,
     upsert_application_draft,
     upsert_assistant_track,
@@ -37,6 +38,7 @@ from lib.schemas import (
     SavedOpportunity,
     SavedOpportunityCreate,
     ScoutOpportunityUpdate,
+    ScoutRecurringUpdate,
 )
 
 router = APIRouter(prefix="/api", tags=["data"])
@@ -70,6 +72,10 @@ def get_scout(
     source: str | None = None,
     min_score: float | None = Query(default=None, ge=0, le=100),
     exclude_tracked: bool = Query(default=False),
+    include_expired: bool = Query(
+        default=False,
+        description="Include opportunities whose deadline has already passed (hidden by default).",
+    ),
     limit: int = Query(default=100, le=500),
     _: None = Depends(verify_api_key),
 ):
@@ -81,9 +87,23 @@ def get_scout(
             source=source,
             min_score=min_score,
             exclude_tracked=exclude_tracked,
+            exclude_expired=not include_expired,
             limit=limit,
         )
         return attach_scout_track_flags(conn, rows)
+
+
+@router.put("/scout/{opportunity_id}/recurring")
+def update_scout_recurring_route(
+    opportunity_id: int,
+    payload: ScoutRecurringUpdate,
+    _: None = Depends(verify_api_key),
+):
+    with db_session() as conn:
+        row = set_scout_recurring(conn, opportunity_id, payload.is_recurring)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Scout opportunity not found")
+    return row
 
 
 @router.post("/opportunities/saved", response_model=SavedOpportunity)

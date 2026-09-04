@@ -34,7 +34,16 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("ai_research_funding", ("research funding", "nlp grant", "ai grant")),
 ]
 
-SOCIAL_HOSTS = ("twitter.com", "x.com", "t.co", "mobile.twitter.com")
+SOCIAL_HOSTS = (
+    "twitter.com",
+    "x.com",
+    "t.co",
+    "mobile.twitter.com",
+    "instagram.com",
+    "facebook.com",
+    "m.facebook.com",
+    "tiktok.com",
+)
 
 URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
@@ -62,9 +71,16 @@ def normalize_url(url: str) -> str:
     )
 
 
-def _is_social_url(url: str) -> bool:
+def is_social_url(url: str) -> bool:
+    """True for social-feed/post URLs — never a program's own application page.
+
+    Exact host match only, deliberately not a subdomain-suffix match: some
+    orgs run real, distinct content on a subdomain of a social platform's
+    domain (e.g. research.facebook.com hosts Meta's own research-grant pages
+    and is not a Facebook feed/post), and those must not be caught here.
+    """
     host = urlparse(url).netloc.lower().removeprefix("www.")
-    return any(host == h or host.endswith(f".{h}") for h in SOCIAL_HOSTS)
+    return host in SOCIAL_HOSTS
 
 
 def extract_urls_from_text(text: str) -> list[str]:
@@ -91,7 +107,7 @@ def pick_application_url(text: str, explicit_url: str | None) -> str:
     if not urls:
         raise ValueError("No URL found — paste an application link or tweet text with a link.")
 
-    non_social = [u for u in urls if not _is_social_url(u)]
+    non_social = [u for u in urls if not is_social_url(u)]
     if non_social:
         return non_social[0]
     return urls[0]

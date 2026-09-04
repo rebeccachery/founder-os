@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -106,46 +107,113 @@ def rank_opportunity(
     )
 
 
-def parse_deadline_from_text(text: str) -> date | None:
-    """Best-effort deadline extraction from search snippets."""
-    import re
+_MONTH_NAMES = (
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+)
 
+_ISO_DATE_RE = re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b")
+_MONTH_DATE_RE = re.compile(
+    r"\b(" + "|".join(_MONTH_NAMES) + r")\s+(\d{1,2}),?\s+(20\d{2})\b"
+)
+
+# Phrases that indicate a nearby date is actually an application deadline,
+# as opposed to a publish date, an image caption, or an unrelated event date
+# picked up from a noisy search snippet.
+DEADLINE_KEYWORDS = (
+    "deadline",
+    "apply by",
+    "apply before",
+    "applications close",
+    "applications due",
+    "application closes",
+    "application deadline",
+    "due by",
+    "submission deadline",
+    "submit by",
+    "closes on",
+    "close on",
+    "closing on",
+    "closing date",
+    "must apply by",
+    "open through",
+    "open until",
+)
+
+_PROXIMITY_WINDOW = 80
+
+
+def _date_candidates(text: str) -> list[tuple[int, int, date]]:
+    """All (start, end, date) matches for ISO and month-name date patterns."""
+    candidates: list[tuple[int, int, date]] = []
+    for m in _ISO_DATE_RE.finditer(text):
+        try:
+            candidates.append(
+                (m.start(), m.end(), date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            )
+        except ValueError:
+            continue
+    for m in _MONTH_DATE_RE.finditer(text.lower()):
+        month_index = _MONTH_NAMES.index(m.group(1)) + 1
+        try:
+            candidates.append(
+                (m.start(), m.end(), date(int(m.group(3)), month_index, int(m.group(2))))
+            )
+        except ValueError:
+            continue
+    return candidates
+
+
+def _span_gap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
+    if a_end <= b_start:
+        return b_start - a_end
+    if b_end <= a_start:
+        return a_start - b_end
+    return 0
+
+
+def parse_deadline_from_text(text: str) -> date | None:
+    """Extract a deadline date — but only one that appears near deadline-indicating
+    language (e.g. "deadline", "apply by", "closes on").
+
+    A date found anywhere else in a search snippet (an image caption, a publish
+    date, an unrelated event mentioned in the same page) is not trustworthy
+    enough to store as the application deadline, so it's treated as unknown
+    rather than guessed.
+    """
     normalized = text.lower()
     today = date.today()
 
-    iso_match = re.search(r"\b(20\d{2})-(\d{2})-(\d{2})\b", text)
-    if iso_match:
-        try:
-            return date(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
-        except ValueError:
-            pass
+    keyword_spans = [
+        (m.start(), m.end())
+        for kw in DEADLINE_KEYWORDS
+        for m in re.finditer(re.escape(kw), normalized)
+    ]
+    if not keyword_spans:
+        return None
 
-    month_names = (
-        "january",
-        "february",
-        "march",
-        "april",
-        "may",
-        "june",
-        "july",
-        "august",
-        "september",
-        "october",
-        "november",
-        "december",
-    )
-    for i, month in enumerate(month_names, start=1):
-        pattern = rf"\b{month}\s+(\d{{1,2}}),?\s+(20\d{{2}})\b"
-        match = re.search(pattern, normalized)
-        if match:
-            try:
-                return date(int(match.group(2)), i, int(match.group(1)))
-            except ValueError:
-                continue
+    best_gap: int | None = None
+    best_date: date | None = None
+    for start, end, parsed in _date_candidates(text):
+        gap = min(_span_gap(start, end, kw_start, kw_end) for kw_start, kw_end in keyword_spans)
+        if gap <= _PROXIMITY_WINDOW and (best_gap is None or gap < best_gap):
+            best_gap = gap
+            best_date = parsed
+    if best_date is not None:
+        return best_date
 
-    if "deadline" in normalized or "apply by" in normalized or "due" in normalized:
-        for days in (7, 14, 21, 30):
-            if f"{days} day" in normalized:
-                return today + timedelta(days=days)
+    for days in (7, 14, 21, 30):
+        if f"{days} day" in normalized:
+            return today + timedelta(days=days)
 
     return None

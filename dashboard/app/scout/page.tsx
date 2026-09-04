@@ -3,9 +3,10 @@ import Link from "next/link";
 import { AddOpportunityForm } from "@/components/AddOpportunityForm";
 import { DataTable } from "@/components/DataTable";
 import { DeadlineEditor } from "@/components/DeadlineEditor";
+import { RecurringToggle } from "@/components/RecurringToggle";
 import { ScoutSourceFilter } from "@/components/ScoutSourceFilter";
 import { ScoutTrackButton } from "@/components/ScoutTrackButton";
-import { ExternalLink, StatusBadge } from "@/components/ui";
+import { ExternalLink, FreshnessBadge, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 
 function formatCategory(category: string) {
@@ -24,23 +25,28 @@ type ScoutSource = "all" | "manual" | "agent";
 export default async function ScoutPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; include_expired?: string }>;
 }) {
   const params = await searchParams;
   const sourceParam = params.source;
   const activeSource: ScoutSource =
     sourceParam === "manual" ? "manual" : sourceParam === "agent" ? "agent" : "all";
+  const includeExpired = params.include_expired === "true";
 
   let rows: Awaited<ReturnType<typeof api.scout>> = [];
   try {
-    rows = await api.scout(
-      activeSource === "all"
-        ? undefined
-        : { source: activeSource === "manual" ? "manual" : "agent" }
-    );
+    rows = await api.scout({
+      ...(activeSource === "all" ? {} : { source: activeSource === "manual" ? "manual" : "agent" }),
+      includeExpired,
+    });
   } catch {
     /* handled by empty state */
   }
+
+  const expiredToggleParams = new URLSearchParams();
+  if (activeSource !== "all") expiredToggleParams.set("source", activeSource);
+  if (!includeExpired) expiredToggleParams.set("include_expired", "true");
+  const expiredToggleHref = `/scout${expiredToggleParams.toString() ? `?${expiredToggleParams}` : ""}`;
 
   return (
     <div>
@@ -54,7 +60,15 @@ export default async function ScoutPage({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-        <ScoutSourceFilter active={activeSource} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ScoutSourceFilter active={activeSource} />
+          <Link
+            href={expiredToggleHref}
+            className="rounded-full px-3 py-1 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+          >
+            {includeExpired ? "Hide expired" : "Show expired"}
+          </Link>
+        </div>
         {activeSource === "manual" && (
           <Link href="/assistant" className="text-sm text-sky-400 hover:underline">
             View in Assistant →
@@ -109,6 +123,19 @@ export default async function ScoutPage({
                   sourceId={row.id as number}
                   deadlineAt={row.deadline_at as string | null}
                 />
+              ),
+            },
+            {
+              key: "freshness",
+              label: "Freshness",
+              render: (row) => (
+                <div className="flex flex-col items-start gap-1">
+                  <FreshnessBadge freshness={row.freshness as string | null} />
+                  <RecurringToggle
+                    opportunityId={row.id as number}
+                    isRecurring={Boolean(row.is_recurring)}
+                  />
+                </div>
               ),
             },
             {

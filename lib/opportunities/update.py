@@ -4,6 +4,7 @@ from typing import Any
 
 import sqlite3
 
+from lib.scout.freshness import compute_freshness
 from lib.scout.profile import load_founder_profile
 from lib.scout.ranker import rank_opportunity
 
@@ -75,4 +76,10 @@ def update_scout_deadline(
         "SELECT * FROM scout_opportunities WHERE id = ?",
         (opportunity_id,),
     ).fetchone()
-    return dict(updated) if updated else None
+    if not updated:
+        return None
+    result = dict(updated)
+    is_recurring = bool(result.get("is_recurring"))
+    result["is_recurring"] = is_recurring
+    result["freshness"] = compute_freshness(result.get("deadline_at"), is_recurring)
+    return result
