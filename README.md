@@ -1,6 +1,15 @@
 # Founder OS
 
+[![CI](https://github.com/rebeccachery/founder-os/actions/workflows/ci.yml/badge.svg)](https://github.com/rebeccachery/founder-os/actions/workflows/ci.yml)
+
 An internal operating system for solo founders. **Funding Scout** discovers and ranks grants, fellowships, competitions, and accelerators against your founder profile. **OSS Discovery** finds open-source datasets, models, and repos ranked against your language profile. A Next.js dashboard and executive assistant surface the highest-impact opportunities in one place.
+
+**Highlights**
+
+- **Measured ranking.** An [evaluation harness](evals/README.md) scores each ranker version against baselines (BM25, deadline-only, random) using P@k, nDCG, MAP and AUC, with paired-bootstrap confidence intervals. Error analysis found two real bugs: substring keyword matching (about 47% of "AI" matches were false positives) and listicle and press-release pages crowding the top results. Fixing them took P@10 from 0.0 to 0.3 on silver labels.
+- **Robust extraction.** Deadline parsing only accepts a date that appears near deadline language. It handles ISO, US, day-first and month-name dates, ordinals and markdown-mangled years, and won't revive stale cycles ([tests](tests/test_deadline_parsing.py)).
+- **Resilient data collection.** A search-provider fallback chain (Tavily → SerpAPI → Google CSE) survives rate limits and outages. An LLM layer (Ollama, OpenAI or Anthropic) falls back to templates.
+- **Local-first operations.** A launchd nightly job with locking, rotating SQLite backups, structured logs and failure notifications.
 
 Scout is the single source of truth for funding opportunities — grants, fellowships, competitions, and accelerators all live in `scout_opportunities`. The Executive Assistant lets you **track** what you're actively applying to, **pin** priorities, **edit deadlines**, and **save application drafts** without cluttering the briefing with every discovered lead.
 
@@ -52,7 +61,10 @@ founder-os/
 ├── config/          # Sample configs (*.example.yaml) — safe to publish
 ├── private/         # Your real profiles, notes, query overrides (gitignored)
 ├── agents/          # Domain agents (funding_scout, investors, oss_discovery, …)
-├── workflows/       # CLI runner + GitHub Actions
+├── workflows/       # CLI runner, rescore + backfill maintenance scripts
+├── scripts/         # Nightly job + launchd installer
+├── evals/           # Ranker evaluation harness, fixtures, results
+├── tests/           # Pytest suite (no network, isolated DB per test)
 ├── storage/         # SQLite database + raw exports (gitignored)
 ├── reports/         # Generated markdown digests (gitignored)
 ├── dashboard/       # Next.js UI
@@ -80,6 +92,13 @@ cp config/features.example.yaml         private/config/features.yaml
 Optional: add company-specific search queries under `private/agents/{agent}/queries.yaml` (merged with public `agents/*/queries.yaml`).
 
 ### 1. Backend
+
+```bash
+make install   # .venv + Python/dashboard deps + .env files
+make api
+```
+
+Or by hand:
 
 ```bash
 python -m venv .venv
@@ -139,7 +158,7 @@ Add search API keys to `.env` before running funding agents against live search:
 
 For OSS Discovery, optional tokens improve rate limits: `GITHUB_TOKEN`, `HF_TOKEN`.
 
-Without keys, agents run but return no search results. The dashboard still works via demo seed data.
+Without keys, Funding Scout finishes with an error ("No results from any search provider") so a missing key can't look like a quiet day. The dashboard still works via demo seed data.
 
 ## Configuration
 
@@ -250,24 +269,36 @@ Interactive docs: http://localhost:8000/docs
 
 All `/api/*` routes require header: `X-API-Key: dev-local-key` (or your `API_KEY`).
 
-## GitHub Actions
+## Nightly run (local)
 
-Configure secrets in your repo:
+Founder OS runs on your Mac rather than a server. Your profiles and database never leave your machine.
 
-| Secret | Purpose |
-|--------|---------|
-| `TAVILY_API_KEY` | Tavily search |
-| `SERPAPI_KEY` | SerpAPI search |
-| `GOOGLE_CSE_KEY` | Google Custom Search |
-| `GOOGLE_CSE_CX` | Google CSE engine ID |
-| `GITHUB_TOKEN` | GitHub Search API (OSS Discovery) |
-| `HF_TOKEN` | Hugging Face Hub API (OSS Discovery) |
+```bash
+make nightly-install          # launchd job, 06:30 daily (make nightly-install AT="7 15" to change)
+make nightly                  # run it once now
+make nightly-uninstall
+```
 
-Workflows:
+[`scripts/nightly.sh`](scripts/nightly.sh) backs up the DB (keeps 7), runs the daily agents, runs the weekly agents on Mondays, writes `storage/logs/nightly-YYYY-MM-DD.log`, and shows a macOS notification if anything fails. Unlike cron, launchd runs a missed job when the Mac wakes. A lock prevents overlapping runs.
 
-- **Daily Scan** — `funding_scout`, `executive_assistant` (6am UTC)
-- **Weekly Digest** — investors, research, `oss_discovery` (Mon 8am UTC)
-- **Manual Agent Run** — pick an agent from the Actions tab
+## Evaluation
+
+```bash
+make eval-silver   # rank every stored opportunity, compare systems, write evals/results/
+make label         # hand-label a stratified sample for the gold set
+make rescore       # preview what moves when the ranker changes (ARGS=--apply to write)
+```
+
+Method, results and caveats: [evals/README.md](evals/README.md).
+
+## Development
+
+```bash
+make check   # ruff + mypy + tsc + pytest, the same checks as CI
+make cov     # coverage report
+```
+
+[CI](.github/workflows/ci.yml) runs lint, type checks, tests, a fixture eval (posted to the job summary) and a production dashboard build on every push and PR. Tests run against a temporary database with the example profiles and never touch the network or `private/`.
 
 ## Public vs private
 
@@ -293,4 +324,4 @@ If you open-source this repo, scrub sensitive files from git history before publ
 6. Run `python workflows/run_agent.py --agent executive_assistant` and review `/assistant`
 7. Run `python workflows/run_agent.py --agent oss_discovery` and review `/oss`
 8. Set `SEED_DEMO_DATA=false` once live data is flowing
-9. Configure GitHub Actions secrets for scheduled scans (profiles must be available on the runner — use a private repo or inject config via secrets)
+9. `make nightly-install` so scans run every morning
