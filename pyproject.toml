@@ -1,0 +1,44 @@
+[project]
+name = "founder-os"
+version = "0.2.0"
+description = "Local-first agents that find, rank and track funding and open-source opportunities for a solo founder."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# Dependencies live in requirements.txt / requirements-dev.txt (pinned).
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["dashboard", ".venv", "storage", "private", "reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",    # long lines are fine in SQL strings and messages
+    "B008",    # FastAPI's Depends() in defaults is idiomatic
+    "RUF001",  # en dashes / curly quotes in user-facing strings are intentional
+    "RUF002",
+    "RUF003",
+    "UP042",   # str+Enum kept: StrEnum changes str() output used in stored values
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lib", "api", "agents", "evals", "workflows"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["lib", "api", "agents", "evals", "workflows"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:lib.*"]
+
+[tool.coverage.run]
+source = ["lib", "api", "agents", "evals"]
+omit = ["lib/git/*", "lib/social/context.py"]
