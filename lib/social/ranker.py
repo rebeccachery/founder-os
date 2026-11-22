@@ -10,14 +10,13 @@ from lib.schemas import (
     SocialContext,
 )
 from lib.scout.profile import FounderProfile, load_founder_profile
+from lib.text import keyword_hits
 
 
 def _keyword_score(text: str, keywords: list[str]) -> float:
     if not keywords:
         return 0.0
-    normalized = text.lower()
-    hits = sum(1 for kw in keywords if kw.lower() in normalized)
-    return min(3.0, hits * 0.75)
+    return min(3.0, keyword_hits(text, keywords) * 0.75)
 
 
 def _profile_keywords(profile: FounderProfile) -> list[str]:

@@ -6,6 +6,8 @@ from datetime import datetime
 from lib.discovery.normalize import DiscoveryHit
 from lib.discovery.profile import OssProfile
 from lib.schemas import OssScores
+from lib.text import keyword_hits, keyword_score
+from lib.timeutil import utcnow_naive
 
 
 @dataclass
@@ -17,14 +19,6 @@ class RankedOssResource:
 
 def _normalize(text: str) -> str:
     return text.lower()
-
-
-def _keyword_score(text: str, keywords: list[str]) -> float:
-    if not keywords:
-        return 0.0
-    normalized = _normalize(text)
-    hits = sum(1 for kw in keywords if _normalize(kw) in normalized)
-    return min(100.0, (hits / max(len(keywords) * 0.15, 1)) * 100)
 
 
 def _target_language_score(text: str, tags: list[str], profile: OssProfile) -> tuple[float, bool]:
@@ -44,7 +38,7 @@ def _target_language_score(text: str, tags: list[str], profile: OssProfile) -> t
 
     for name in names:
         total += 1
-        if _normalize(name) in combined:
+        if keyword_hits(combined, [name]):
             hits += 1
 
     if total == 0:
@@ -55,7 +49,7 @@ def _target_language_score(text: str, tags: list[str], profile: OssProfile) -> t
 
 
 def _language_fit_score(text: str, tags: list[str], profile: OssProfile) -> tuple[float, bool]:
-    generic = _keyword_score(text, profile.signals.language_keywords)
+    generic = keyword_score(text, profile.signals.language_keywords)
     target, matched = _target_language_score(text, tags, profile)
     if target > 0:
         return round(min(100.0, generic * 0.35 + target * 0.65), 1), matched
@@ -69,7 +63,7 @@ def _recency_score(last_updated_at: str | None) -> float:
         updated = datetime.fromisoformat(last_updated_at.replace("Z", "+00:00"))
         if updated.tzinfo:
             updated = updated.replace(tzinfo=None)
-        days_ago = (datetime.utcnow() - updated).days
+        days_ago = (utcnow_naive() - updated).days
     except ValueError:
         return 20.0
 
@@ -107,10 +101,11 @@ def _build_reason(
     resource_type: str,
     *,
     target_language_match: bool,
+    target_language_label: str = "target language",
 ) -> str:
     highlights: list[str] = []
     if target_language_match:
-        highlights.append("Haitian Creole match")
+        highlights.append(f"{target_language_label} match")
     if scores.task_fit >= 50:
         highlights.append("task fit")
     if scores.language_fit >= 50 and not target_language_match:
@@ -147,7 +142,7 @@ def rank_oss_resource(hit: DiscoveryHit, profile: OssProfile) -> RankedOssResour
     language_fit, target_match = _language_fit_score(text, hit.task_tags + hit.language_tags, profile)
 
     scores = OssScores(
-        task_fit=_keyword_score(text, signals.task_keywords),
+        task_fit=keyword_score(text, signals.task_keywords),
         language_fit=language_fit,
         recency=_recency_score(hit.last_updated_at),
         popularity=_popularity_score(hit.stars),
@@ -164,6 +159,11 @@ def rank_oss_resource(hit: DiscoveryHit, profile: OssProfile) -> RankedOssResour
 
     return RankedOssResource(
         scores=scores,
-        rank_reason=_build_reason(scores, hit.resource_type, target_language_match=target_match),
+        rank_reason=_build_reason(
+            scores,
+            hit.resource_type,
+            target_language_match=target_match,
+            target_language_label=(profile.signals.target_language_names or ["target language"])[0].title(),
+        ),
         target_language_match=target_match,
     )

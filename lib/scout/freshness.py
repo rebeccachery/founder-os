@@ -7,7 +7,9 @@ EXPIRING_SOON_DAYS = 14
 FRESHNESS_VALUES = ("recurring", "expired", "expiring_soon", "active", "unknown")
 
 
-def compute_freshness(deadline_at: str | None, is_recurring: bool = False) -> str:
+def compute_freshness(
+    deadline_at: str | None, is_recurring: bool = False, today: date | None = None
+) -> str:
     """Derive a freshness label from a deadline, computed fresh on every read.
 
     Deliberately not stored: a persisted status would need to be kept in sync
@@ -31,7 +33,7 @@ def compute_freshness(deadline_at: str | None, is_recurring: bool = False) -> st
     except ValueError:
         return "unknown"
 
-    days_out = (deadline - date.today()).days
+    days_out = (deadline - (today or date.today())).days
     if days_out < 0:
         return "expired"
     if days_out <= EXPIRING_SOON_DAYS:
