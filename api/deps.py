@@ -1,7 +1,7 @@
 import os
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Header, HTTPException
 
 API_KEY = os.getenv("API_KEY", "dev-local-key")
 

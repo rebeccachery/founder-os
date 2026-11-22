@@ -1,4 +1,3 @@
-from datetime import datetime
 
 from lib.agents.base import BaseAgent
 from lib.db import log_agent_run
@@ -7,6 +6,7 @@ from lib.social.context import collect_social_context
 from lib.social.digest import write_content_digest, write_context_digest
 from lib.social.generator import generate_social_content
 from lib.social.storage import save_generation_drafts
+from lib.timeutil import utcnow_naive
 
 
 class SocialAgent(BaseAgent):
@@ -21,7 +21,7 @@ class SocialAgent(BaseAgent):
         )
 
     def run(self) -> AgentResult:
-        started_at = datetime.utcnow()
+        started_at = utcnow_naive()
         try:
             context = collect_social_context(self.conn)
             context_md, _context_json = write_context_digest(context)

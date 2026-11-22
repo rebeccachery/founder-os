@@ -3,7 +3,7 @@ from lib.scout.ranker import RankedOpportunity, rank_opportunity
 
 __all__ = [
     "FounderProfile",
-    "load_founder_profile",
     "RankedOpportunity",
+    "load_founder_profile",
     "rank_opportunity",
 ]

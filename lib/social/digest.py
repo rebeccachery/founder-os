@@ -1,7 +1,7 @@
-from datetime import datetime
 from pathlib import Path
 
 from lib.schemas import SocialContext, SocialGenerationResult
+from lib.timeutil import utcnow_naive
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 REPORTS_DIR = ROOT / "reports"
@@ -24,7 +24,7 @@ CONTENT_TYPE_LABELS = {
 
 def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = utcnow_naive().strftime("%Y-%m-%d")
     digest_path = REPORTS_DIR / f"social_context_{today}.md"
     json_path = REPORTS_DIR / f"social_context_{today}.json"
 
@@ -98,8 +98,8 @@ def write_context_digest(context: SocialContext) -> tuple[Path, Path]:
     if context.features:
         for feature in context.features:
             hook = f" — {feature.hook}" if feature.hook else ""
-            repo = f"**[{feature.repo}]** " if feature.repo else ""
-            lines.append(f"- {repo}**{feature.name}** ({feature.status}){hook}\n")
+            label = f"**[{feature.repo}]** " if feature.repo else ""
+            lines.append(f"- {label}**{feature.name}** ({feature.status}){hook}\n")
     else:
         lines.append("_No features in private/config/features.yaml._\n")
     lines.append("\n")
@@ -128,7 +128,7 @@ def write_content_digest(
     generation: SocialGenerationResult,
 ) -> tuple[Path, Path]:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = utcnow_naive().strftime("%Y-%m-%d")
     digest_path = REPORTS_DIR / f"social_{today}.md"
     json_path = REPORTS_DIR / f"social_{today}.json"
 

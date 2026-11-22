@@ -25,7 +25,6 @@ import argparse
 import json
 import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,6 +34,7 @@ from lib.db import get_connection, get_db_path, init_db  # noqa: E402
 from lib.opportunities.intake import is_social_url  # noqa: E402
 from lib.scout.profile import load_founder_profile  # noqa: E402
 from lib.scout.ranker import parse_deadline_from_text, rank_opportunity  # noqa: E402
+from lib.timeutil import utcnow_naive  # noqa: E402
 
 # Only re-extract deadlines for rows whose stored text is actually a raw
 # search-engine snippet — the thing the new parser is meant to fix. Deliberately
@@ -150,7 +150,7 @@ def main() -> None:
         return re.sub(r"\s+", " ", text).strip()
 
     duplicate_tags: list[dict] = []
-    for category, items in by_category.items():
+    for _category, items in by_category.items():
         items_sorted = sorted(items, key=lambda r: r["id"])
         for i, row in enumerate(items_sorted):
             if _is_deadline_locked(row):
@@ -203,7 +203,7 @@ def main() -> None:
 
     backup_dir = ROOT / "storage" / "exports"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / f"founder_os_pre_backfill_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.db"
+    backup_path = backup_dir / f"founder_os_pre_backfill_{utcnow_naive().strftime('%Y%m%dT%H%M%SZ')}.db"
     shutil.copy2(db_path, backup_path)
     print(f"Backed up database to {backup_path}")
 

@@ -87,7 +87,7 @@ def _template_drafts(
                 [
                     f"1/ We're building {company} for underresourced languages.",
                     f"2/ This week on {showcase_repo_name or 'a showcase repo'}: {(showcase_signal.title if showcase_signal else 'recent improvements')}. {showcase_signal.summary[:180] if showcase_signal else ''}",
-                    f"3/ Why it matters: language learning tools should meet communities where they are.",
+                    "3/ Why it matters: language learning tools should meet communities where they are.",
                     f"4/ Learn more: {cta}",
                 ]
             ),

@@ -1,12 +1,12 @@
-from datetime import date, datetime, timedelta
-
 import sqlite3
+from datetime import date, timedelta
 
 from lib.assistant.collector import collect_assistant_context
 from lib.assistant.conflicts import detect_conflicts
 from lib.assistant.ranker import item_to_briefing, rank_priorities
 from lib.db import list_application_drafts_bulk, list_assistant_tracks_map
 from lib.schemas import BriefingItem, ExecutiveBriefing
+from lib.timeutil import utcnow_naive
 
 
 def _enrich_with_track(item: dict, tracks: dict[int, dict]) -> dict:
@@ -103,13 +103,13 @@ def build_briefing(
 
     for launch in ctx.launches:
         launch_item = item_to_briefing(launch, today)
-        if launch_item.due_at and launch_item.due_at <= (today + timedelta(days=7)).isoformat():
-            if not any(d.title == launch_item.title for d in deadlines):
-                deadlines.append(launch_item)
+        due_soon = launch_item.due_at and launch_item.due_at <= (today + timedelta(days=7)).isoformat()
+        if due_soon and not any(d.title == launch_item.title for d in deadlines):
+            deadlines.append(launch_item)
 
     return ExecutiveBriefing(
         briefing_date=today,
-        generated_at=datetime.utcnow(),
+        generated_at=utcnow_naive(),
         priorities=priorities,
         conflicts=conflicts,
         follow_ups=follow_ups,
@@ -128,10 +128,7 @@ def briefing_needs_rebuild(briefing: dict) -> bool:
     for item in briefing.get("applications", []):
         if item.get("source_id") is not None and "tracked_application" not in item:
             return True
-    for item in briefing.get("priorities", []):
-        if "priority_source" not in item:
-            return True
-    return False
+    return any("priority_source" not in item for item in briefing.get("priorities", []))
 
 
 def briefing_to_db_row(briefing: ExecutiveBriefing) -> dict:

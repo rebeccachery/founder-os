@@ -1,7 +1,6 @@
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-
-import sqlite3
 
 from lib.db import get_deadlines, list_scout_opportunities, list_table
 from lib.social.profile import load_features_config

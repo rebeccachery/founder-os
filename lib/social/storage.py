@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
-
 import sqlite3
+from datetime import UTC, datetime
 
 from lib.db import archive_draft_social_posts_for_date, insert_social_post
 from lib.schemas import SocialDraft, SocialGenerationResult
@@ -11,11 +10,11 @@ def save_generation_drafts(
     generation: SocialGenerationResult,
 ) -> int:
     """Persist drafts to social_posts; archive prior drafts from the same UTC day."""
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(UTC).date().isoformat()
     archive_draft_social_posts_for_date(conn, today)
 
     saved = 0
-    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     for draft in generation.drafts:
         _insert_draft(conn, draft, generation.llm_model, generated_at=now)
         saved += 1

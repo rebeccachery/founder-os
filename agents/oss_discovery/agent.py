@@ -1,6 +1,5 @@
 import json
 import os
-from datetime import datetime
 from pathlib import Path
 
 from lib.agents.base import BaseAgent
@@ -13,8 +12,9 @@ from lib.discovery.profile import EVERGREEN_RESOURCE_TYPES, load_oss_profile
 from lib.discovery.ranker import rank_oss_resource
 from lib.discovery.recency import is_recent, should_ingest
 from lib.paths import private_agent_queries_path
-from lib.schemas import AgentResult
+from lib.schemas import AgentResult, SearchResult
 from lib.scout.queries import load_categorized_queries
+from lib.timeutil import utcnow_naive
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 REPORTS_DIR = ROOT / "reports"
@@ -59,7 +59,10 @@ class OssDiscoveryAgent(BaseAgent):
 
         return dedupe_hits(all_hits)
 
-    def process_results(self, hits: list[DiscoveryHit]) -> AgentResult:
+    def process_results(self, results: list[SearchResult]) -> AgentResult:
+        raise NotImplementedError("OSS Discovery ranks DiscoveryHits; see process_hits()")
+
+    def process_hits(self, hits: list[DiscoveryHit]) -> AgentResult:
         profile = load_oss_profile()
         upserted = 0
         skipped_stale = 0
@@ -113,10 +116,10 @@ class OssDiscoveryAgent(BaseAgent):
         )
 
     def run(self) -> AgentResult:
-        started_at = datetime.utcnow()
+        started_at = utcnow_naive()
         try:
             hits = self.discover()
-            agent_result = self.process_results(hits)
+            agent_result = self.process_hits(hits)
             log_agent_run(
                 self.conn,
                 agent_name=self.name,
@@ -139,7 +142,7 @@ class OssDiscoveryAgent(BaseAgent):
 
     def _write_digest(self, ranked_rows: list[tuple[float, dict]], profile) -> Path:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = utcnow_naive().strftime("%Y-%m-%d")
         digest_path = REPORTS_DIR / f"oss_{today}.md"
         recent_days = profile.recency.digest_recent_days
 

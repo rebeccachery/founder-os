@@ -1,10 +1,10 @@
-from datetime import datetime
 
 from lib.agents.base import BaseAgent
 from lib.assistant.briefing import briefing_to_db_row, build_briefing
 from lib.assistant.digest import write_briefing_digest
 from lib.db import log_agent_run, upsert_briefing
 from lib.schemas import AgentResult, SearchResult
+from lib.timeutil import utcnow_naive
 
 
 class ExecutiveAssistantAgent(BaseAgent):
@@ -19,7 +19,7 @@ class ExecutiveAssistantAgent(BaseAgent):
         )
 
     def run(self) -> AgentResult:
-        started_at = datetime.utcnow()
+        started_at = utcnow_naive()
         try:
             briefing = build_briefing(self.conn)
             upsert_briefing(self.conn, briefing_to_db_row(briefing))

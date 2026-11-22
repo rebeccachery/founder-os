@@ -45,15 +45,15 @@ def summarize_context(context: SocialContext) -> str:
     if context.milestones:
         lines.append(f"Milestones ({len(context.milestones)}):")
         for milestone in context.milestones:
-            repo = f"[{milestone.repo_name}] " if milestone.repo_name else ""
-            lines.append(f"  - {repo}{milestone.title} [{milestone.state}]")
+            label = f"[{milestone.repo_name}] " if milestone.repo_name else ""
+            lines.append(f"  - {label}{milestone.title} [{milestone.state}]")
 
     if context.features:
         lines.append(f"Features ({len(context.features)}):")
         for feature in context.features:
             hook = f" — {feature.hook}" if feature.hook else ""
-            repo = f"[{feature.repo}] " if feature.repo else ""
-            lines.append(f"  - {repo}{feature.name} ({feature.status}){hook}")
+            label = f"[{feature.repo}] " if feature.repo else ""
+            lines.append(f"  - {label}{feature.name} ({feature.status}){hook}")
 
     if context.datasets:
         lines.append(f"OSS resources ({len(context.datasets)}):")

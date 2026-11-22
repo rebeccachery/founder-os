@@ -1,15 +1,15 @@
 import json
 import re
-from datetime import date, datetime
-from typing import Any
-from urllib.parse import parse_qs, urlparse, urlunparse
-
 import sqlite3
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from lib.db import upsert_by_url
 from lib.schemas import SavedOpportunityCreate
 from lib.scout.profile import load_founder_profile
 from lib.scout.ranker import parse_deadline_from_text, rank_opportunity
+from lib.search.domains import SOCIAL_HOSTS
+from lib.timeutil import utcnow_naive
 
 SCOUT_CATEGORIES = (
     "accelerators",
@@ -34,17 +34,6 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("ai_research_funding", ("research funding", "nlp grant", "ai grant")),
 ]
 
-SOCIAL_HOSTS = (
-    "twitter.com",
-    "x.com",
-    "t.co",
-    "mobile.twitter.com",
-    "instagram.com",
-    "facebook.com",
-    "m.facebook.com",
-    "tiktok.com",
-)
-
 URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
@@ -53,22 +42,19 @@ def normalize_url(url: str) -> str:
     if not parsed.scheme or not parsed.netloc:
         raise ValueError("Invalid URL — include https://")
 
-    clean_query = []
+    clean_query: list[str] = []
     for key, values in parse_qs(parsed.query, keep_blank_values=False).items():
         if key.lower().startswith("utm_") or key.lower() in ("fbclid", "gclid"):
             continue
         clean_query.extend(f"{key}={value}" for value in values)
 
-    return urlunparse(
-        (
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            parsed.path.rstrip("/") or "/",
-            parsed.params,
-            "&".join(clean_query) if clean_query else "",
-            "",
-        )
-    )
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=parsed.netloc.lower(),
+        path=parsed.path.rstrip("/") or "/",
+        query="&".join(clean_query),
+        fragment="",
+    ).geturl()
 
 
 def is_social_url(url: str) -> bool:
@@ -173,7 +159,7 @@ def save_opportunity(
     source = _resolve_source(payload)
     raw_json: dict[str, Any] = {
         "intake": source,
-        "saved_at": datetime.utcnow().isoformat(),
+        "saved_at": utcnow_naive().isoformat(),
     }
     if payload.description:
         raw_json["original_text"] = payload.description[:2000]

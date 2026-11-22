@@ -1,8 +1,8 @@
-from datetime import datetime
 from pathlib import Path
 
 from lib.agents.base import BaseAgent
 from lib.schemas import AgentResult, SearchResult
+from lib.timeutil import utcnow_naive
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 REPORTS_DIR = ROOT / "reports"
@@ -13,7 +13,7 @@ class ResearchAgent(BaseAgent):
 
     def process_results(self, results: list[SearchResult]) -> AgentResult:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = utcnow_naive().strftime("%Y-%m-%d")
         report_path = REPORTS_DIR / f"research_{today}.md"
 
         lines = [f"# Research Report — {today}\n"]

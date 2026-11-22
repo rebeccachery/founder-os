@@ -1,8 +1,7 @@
 import json
+import sqlite3
 from datetime import date
 from typing import Any
-
-import sqlite3
 
 from lib.scout.freshness import compute_freshness
 from lib.scout.profile import load_founder_profile

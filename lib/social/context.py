@@ -1,7 +1,6 @@
 import json
-from datetime import date, datetime, timedelta
-
 import sqlite3
+from datetime import date, datetime, timedelta
 
 from lib.db import get_last_agent_run, list_oss_resources
 from lib.schemas import (
@@ -13,13 +12,14 @@ from lib.schemas import (
 from lib.scout.profile import load_founder_profile
 from lib.social.profile import load_features_config, load_social_profile, primary_repo
 from lib.social.repos import collect_all_repos
+from lib.timeutil import utcnow_naive
 
 
 def _period_start(conn: sqlite3.Connection, since_days: int) -> datetime:
     last_run = get_last_agent_run(conn, "social")
     if last_run:
         return last_run
-    return datetime.utcnow() - timedelta(days=since_days)
+    return utcnow_naive() - timedelta(days=since_days)
 
 
 def _load_features() -> list[FeatureSignal]:
@@ -108,7 +108,7 @@ def _load_datasets(conn: sqlite3.Connection) -> list[DatasetSignal]:
 def collect_social_context(conn: sqlite3.Connection) -> SocialContext:
     social_profile = load_social_profile()
     founder_profile = load_founder_profile()
-    period_end = datetime.utcnow()
+    period_end = utcnow_naive()
     period_start = _period_start(conn, social_profile.since_days)
 
     commits, releases, github_milestones, repo_summaries = collect_all_repos(

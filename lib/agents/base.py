@@ -1,14 +1,13 @@
-from abc import ABC, abstractmethod
-from datetime import datetime
-from pathlib import Path
-
 import sqlite3
+from abc import ABC, abstractmethod
+from pathlib import Path
 
 from lib.db import log_agent_run
 from lib.paths import private_agent_queries_path
 from lib.schemas import AgentResult, SearchResult
-from lib.scout.queries import load_categorized_queries
+from lib.scout.queries import load_categorized_queries, load_category_time_ranges
 from lib.search.client import load_queries, search
+from lib.timeutil import utcnow_naive
 
 
 class BaseAgent(ABC):
@@ -36,18 +35,22 @@ class BaseAgent(ABC):
         return all_results
 
     def run_categorized_searches(self, max_results: int = 5) -> list[SearchResult]:
+        queries_path = self.agent_dir / self.queries_file
         categorized = load_categorized_queries(
-            self.agent_dir / self.queries_file,
+            queries_path,
             merge_path=private_agent_queries_path(self.agent_dir),
         )
         if not categorized:
             return self.run_searches(max_results=max_results)
 
+        time_ranges = load_category_time_ranges(queries_path)
+
         all_results: list[SearchResult] = []
         seen_urls: set[str] = set()
         for category, queries in categorized.items():
+            time_range = time_ranges.get(category)
             for query in queries:
-                for result in search(query, max_results=max_results):
+                for result in search(query, max_results=max_results, time_range=time_range):
                     if result.url and result.url not in seen_urls:
                         seen_urls.add(result.url)
                         all_results.append(result.model_copy(update={"category": category}))
@@ -58,7 +61,7 @@ class BaseAgent(ABC):
         ...
 
     def run(self) -> AgentResult:
-        started_at = datetime.utcnow()
+        started_at = utcnow_naive()
         try:
             results = self.run_searches()
             agent_result = self.process_results(results)

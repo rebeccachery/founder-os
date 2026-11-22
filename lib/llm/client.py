@@ -57,7 +57,7 @@ def is_ollama_available(base_url: str | None = None) -> bool:
 
 
 def is_llm_available(provider: str | None = None, base_url: str | None = None) -> bool:
-    chosen = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
+    chosen = (provider or os.getenv("LLM_PROVIDER") or "ollama").lower()
     if chosen == "anthropic":
         return bool(_anthropic_api_key())
     if chosen == "ollama":

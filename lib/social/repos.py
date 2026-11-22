@@ -8,7 +8,7 @@ from lib.git.collector import (
     tag_release,
 )
 from lib.schemas import CommitSignal, MilestoneSignal, ReleaseSignal, RepoActivitySummary
-from lib.social.profile import ProductRepoConfig, SocialProfile, resolve_repo_local_path
+from lib.social.profile import SocialProfile, resolve_repo_local_path
 
 
 def collect_all_repos(

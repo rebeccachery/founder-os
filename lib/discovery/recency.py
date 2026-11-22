@@ -2,6 +2,7 @@ from datetime import datetime
 
 from lib.discovery.normalize import DiscoveryHit
 from lib.discovery.profile import EVERGREEN_RESOURCE_TYPES, OssProfile
+from lib.timeutil import utcnow_naive
 
 
 def parse_updated_at(last_updated_at: str | None) -> datetime | None:
@@ -20,7 +21,7 @@ def days_since_update(last_updated_at: str | None) -> int | None:
     updated = parse_updated_at(last_updated_at)
     if updated is None:
         return None
-    return (datetime.utcnow() - updated).days
+    return (utcnow_naive() - updated).days
 
 
 def should_ingest(hit: DiscoveryHit, profile: OssProfile) -> bool:
