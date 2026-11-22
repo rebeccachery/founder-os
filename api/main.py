@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -7,12 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import agents, data
 from lib.db import init_db, seed_demo_data
+from lib.logging_setup import configure_logging
 
 load_dotenv()
+configure_logging()
+log = logging.getLogger("founder_os.api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if os.getenv("API_KEY", "dev-local-key") == "dev-local-key":
+        log.warning("API_KEY is the default dev key; set API_KEY in .env before exposing the API")
     init_db()
     if os.getenv("SEED_DEMO_DATA", "true").lower() == "true":
         from lib.db import get_connection

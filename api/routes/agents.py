@@ -1,62 +1,34 @@
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.database import db_session
 from api.deps import verify_api_key
+from lib.agents.registry import AGENTS, AgentSpec
 from lib.schemas import AgentResult
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-AGENTS_DIR = ROOT / "agents"
 
-AGENT_MODULES = {
-    "funding_scout": "agents.funding_scout.agent.FundingScoutAgent",
-    "investors": "agents.investors.agent.InvestorsAgent",
-    "crm": "agents.crm.agent.CrmAgent",
-    "social": "agents.social.agent.SocialAgent",
-    "research": "agents.research.agent.ResearchAgent",
-    "oss_discovery": "agents.oss_discovery.agent.OssDiscoveryAgent",
-    "executive_assistant": "agents.executive_assistant.agent.ExecutiveAssistantAgent",
-}
-
-
-def _load_agent_class(dotted: str):
-    module_path, class_name = dotted.rsplit(".", 1)
-    import importlib
-
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
+def _run(spec: AgentSpec) -> AgentResult:
+    with db_session() as conn:
+        return spec.load()(conn, spec.directory).run()
 
 
 @router.get("")
 def list_agents(_: None = Depends(verify_api_key)):
-    return {"agents": list(AGENT_MODULES.keys())}
+    return {
+        "agents": list(AGENTS),
+        "schedules": {name: spec.schedule for name, spec in AGENTS.items()},
+    }
 
 
 @router.post("/run/{agent_name}", response_model=AgentResult)
 def run_agent(agent_name: str, _: None = Depends(verify_api_key)):
-    if agent_name not in AGENT_MODULES:
+    spec = AGENTS.get(agent_name)
+    if spec is None or not spec.directory.exists():
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
-
-    agent_dir = AGENTS_DIR / agent_name
-    if not agent_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Agent directory not found: {agent_name}")
-
-    agent_cls = _load_agent_class(AGENT_MODULES[agent_name])
-    with db_session() as conn:
-        agent = agent_cls(conn, agent_dir)
-        return agent.run()
+    return _run(spec)
 
 
 @router.post("/run-all")
 def run_all_agents(_: None = Depends(verify_api_key)):
-    results: list[AgentResult] = []
-    for name in AGENT_MODULES:
-        agent_dir = AGENTS_DIR / name
-        agent_cls = _load_agent_class(AGENT_MODULES[name])
-        with db_session() as conn:
-            agent = agent_cls(conn, agent_dir)
-            results.append(agent.run())
-    return {"results": results}
+    return {"results": [_run(spec) for spec in AGENTS.values()]}
