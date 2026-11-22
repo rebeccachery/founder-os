@@ -34,3 +34,8 @@ dashboard/.env.local
 dashboard/.env.local.*
 !dashboard/.env.local.example
 .DS_Store
+storage/logs/
+storage/.nightly.lock/
+.coverage
+.ruff_cache/
+dashboard/tsconfig.tsbuildinfo
