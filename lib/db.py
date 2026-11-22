@@ -3,12 +3,14 @@ import json
 import os
 import re
 import sqlite3
-from contextlib import contextmanager
+from collections.abc import Generator
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 from lib.scout.freshness import compute_freshness
+from lib.timeutil import utcnow_naive
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = ROOT / "storage" / "founder_os.db"
@@ -226,7 +228,8 @@ def init_db(db_path: Path | None = None) -> None:
     """
     path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    # sqlite3's own context manager commits but never closes; closing() does both.
+    with closing(sqlite3.connect(path)) as conn:
         ensure_schema(conn)
         drop_legacy_opportunity_tables(conn)
         purge_test_rows(conn)
@@ -292,12 +295,17 @@ def upsert_by_url(
                         "deadline_source": existing_raw.get("deadline_source", "manual"),
                     }
                     data = {**data, "raw_json": merged}
+            elif data.get("deadline_at") is None and existing["deadline_at"]:
+                # A rescan whose snippet happens to omit the date must not wipe a
+                # deadline an earlier run found. (Clearing one on purpose goes
+                # through lib/opportunities/update.py, not this upsert.)
+                data = {**data, "deadline_at": existing["deadline_at"]}
 
     raw_json = data.get("raw_json")
     if isinstance(raw_json, dict):
         data = {**data, "raw_json": _serialize_json(raw_json)}
 
-    columns = [k for k in data.keys() if k != "id"]
+    columns = [k for k in data if k != "id"]
     placeholders = ", ".join("?" for _ in columns)
     col_names = ", ".join(columns)
     # `status` is a user-owned triage field once a row exists — a rescan that
@@ -893,7 +901,7 @@ def insert_social_post(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
     if isinstance(raw_json, dict):
         data = {**data, "raw_json": _serialize_json(raw_json)}
 
-    columns = [k for k in data.keys() if k != "id"]
+    columns = [k for k in data if k != "id"]
     placeholders = ", ".join("?" for _ in columns)
     col_names = ", ".join(columns)
     conn.execute(
@@ -1008,13 +1016,17 @@ def log_agent_run(
         (
             agent_name,
             started_at.isoformat(),
-            (finished_at or datetime.utcnow()).isoformat(),
+            (finished_at or utcnow_naive()).isoformat(),
             status,
             items_found,
             items_upserted,
             message,
         ),
     )
+    # Commit immediately: when an agent fails, the caller's connection context
+    # exits via an exception and never commits — without this, the "error" run
+    # record (the one you most need) was silently rolled back.
+    conn.commit()
 
 
 def _briefing_section_to_json(items: list[Any]) -> str:

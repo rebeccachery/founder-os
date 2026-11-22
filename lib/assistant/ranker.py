@@ -113,12 +113,12 @@ def _is_dismissed(track: dict | None, today: date) -> bool:
     return dismissed_until is not None and dismissed_until >= today
 
 
-def _merge_track_fields(item: dict, track: dict | None) -> dict:
+def _merge_track_fields(item: dict, track: dict | None, today: date | None = None) -> dict:
     merged = dict(item)
     if track:
         merged["pin_priority"] = track.get("pin_priority", False)
         merged["tracked_application"] = track.get("track_application", False)
-        merged["dismissed"] = _is_dismissed(track, date.today())
+        merged["dismissed"] = _is_dismissed(track, today or date.today())
     else:
         merged.setdefault("pin_priority", False)
         merged.setdefault("tracked_application", False)
@@ -149,22 +149,22 @@ def rank_priorities(
         }
         sid = raw.get("source_id")
         track = tracks.get(int(sid)) if sid is not None else None
-        raw = _merge_track_fields(raw, track)
+        raw = _merge_track_fields(raw, track, today)
         if raw.get("pin_priority") and raw.get("source_table") == "scout_opportunities":
             raw["priority_source"] = "pinned"
             pinned_raw.append(raw)
         candidates.append(raw)
 
     for follow_up in ctx.follow_ups:
-        candidates.append(_merge_track_fields(follow_up, None))
+        candidates.append(_merge_track_fields(follow_up, None, today))
 
     for launch in ctx.launches:
-        candidates.append(_merge_track_fields(launch, None))
+        candidates.append(_merge_track_fields(launch, None, today))
 
     for app in ctx.applications:
         sid = app.get("source_id")
         track = tracks.get(int(sid)) if sid is not None else None
-        raw = _merge_track_fields(app, track)
+        raw = _merge_track_fields(app, track, today)
         due = _parse_date(raw.get("due_at"))
         if due is not None and due < today - timedelta(days=7):
             continue
