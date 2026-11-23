@@ -7,6 +7,7 @@ import { createSavedOpportunity } from "@/lib/api";
 
 const CATEGORIES = [
   { value: "", label: "Auto-detect" },
+  { value: "founder_in_residence", label: "Founder in residence" },
   { value: "fellowships", label: "Fellowship" },
   { value: "grants", label: "Grant" },
   { value: "startup_competitions", label: "Competition" },

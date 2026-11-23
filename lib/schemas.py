@@ -20,6 +20,9 @@ class SearchResult(BaseModel):
     source: str = ""
     raw: dict[str, Any] = Field(default_factory=dict)
     category: str = ""
+    # Provider's own query-relevance score (0-1), when it returns one.
+    # Tavily does; SerpAPI/Google CSE don't, so this stays None for them.
+    source_relevance: float | None = None
 
 
 class ScoutScores(BaseModel):

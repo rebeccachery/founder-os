@@ -1,27 +1,63 @@
 categories:
   accelerators:
-    - "startup accelerator application open 2026"
+    - "startup accelerator application open {year}"
     - "early stage startup accelerator apply now"
+  founder_in_residence:
+    - "founder in residence program applications {year}"
+    - "entrepreneur in residence program startup apply {year}"
+    - "venture studio founder in residence"
   fellowships:
-    - "startup fellowship program application 2026"
+    - "startup fellowship program application {year}"
     - "entrepreneur fellowship education technology"
   grants:
-    - "startup grant application open 2026"
-    - "SBIR grant deadline"
+    - "startup grant application open {year}"
+    - "SBIR grant deadline {year}"
+    - "non-dilutive grant pre-seed startup applications open {year}"
   startup_competitions:
-    - "startup competition prize 2026"
+    - "startup competition prize {year}"
     - "innovation competition apply"
   hackathons:
-    - "startup hackathon prize funding 2026"
-    - "AI hackathon apply"
+    - "startup hackathon prize funding {year}"
+    - "AI hackathon apply {year}"
   cloud_credits:
     - "startup cloud credits program AWS GCP Azure"
+    - "startup cloud credits program {year} apply"
   university_programs:
     - "university startup incubator program apply"
     - "campus entrepreneurship program funding"
   ai_research_funding:
-    - "AI research grant startup 2026"
-    - "NSF grant startup"
+    - "AI research grant startup {year}"
+    - "NSF grant startup {year}"
   pitch_competitions:
-    - "startup pitch competition 2026 deadline"
+    - "startup pitch competition {year} deadline"
     - "founder pitch competition prize apply"
+
+# Short natural-language phrase per category, used to generate additional
+# niche-targeted queries by combining it with a rotating keyword drawn from
+# the founder profile's own signal lists (see lib/scout/queries.py). Turns
+# "startup accelerator application open" into e.g. "startup accelerator 2026
+# underresourced language" — searches for what actually fits this founder,
+# instead of relying entirely on post-hoc keyword scoring of generic results.
+category_phrases:
+  accelerators: "startup accelerator"
+  founder_in_residence: "founder in residence program"
+  fellowships: "startup fellowship"
+  grants: "startup grant"
+  startup_competitions: "startup competition"
+  hackathons: "startup hackathon"
+  cloud_credits: "startup cloud credits program"
+  university_programs: "university startup program"
+  ai_research_funding: "AI research grant"
+  pitch_competitions: "startup pitch competition"
+
+# Optional per-category recency hint ("day"/"week"/"month"/"year"), passed to
+# the search provider's own time-range filter. Deliberately left unset for
+# categories where legitimate evergreen "apply now" pages are common
+# (accelerators, cloud credits, university programs) — a recency filter would
+# hide those. Applied only where time-sensitivity clearly outweighs that risk.
+category_time_range:
+  hackathons: month
+  pitch_competitions: month
+  startup_competitions: month
+  grants: year
+  ai_research_funding: year

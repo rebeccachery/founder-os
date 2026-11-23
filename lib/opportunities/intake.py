@@ -13,6 +13,7 @@ from lib.timeutil import utcnow_naive
 
 SCOUT_CATEGORIES = (
     "accelerators",
+    "founder_in_residence",
     "fellowships",
     "grants",
     "startup_competitions",
@@ -20,10 +21,13 @@ SCOUT_CATEGORIES = (
     "cloud_credits",
     "university_programs",
     "ai_research_funding",
+    "pitch_competitions",
     "other",
 )
 
 CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
+    # First: "entrepreneur in residence" pages often also say "fellowship" or "accelerator".
+    ("founder_in_residence", ("founder in residence", "founder-in-residence", "entrepreneur in residence", "entrepreneur-in-residence")),
     ("fellowships", ("fellowship", "fellow", "cohort program")),
     ("grants", ("grant", "sbir", "funding opportunity", "rfp")),
     ("startup_competitions", ("competition", "pitch", "prize", "challenge")),
